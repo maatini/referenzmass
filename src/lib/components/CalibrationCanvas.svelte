@@ -17,9 +17,11 @@
     CalibrationState,
     MeasurementState,
   } from '../persistence';
+  import { calibrationToState, measurementsToState } from '../persistence';
   import { getCurrentProjectPath } from '../project';
   import { convertFileSrc } from '@tauri-apps/api/core';
   import Konva from 'konva';
+  import { createTestCalibrationImage } from '../testImage';
 
   // Props (Svelte 5 runes style)
   interface Props {
@@ -155,7 +157,7 @@
     }
 
     try {
-      const { saveProjectWithDialog, calibrationToState, measurementsToState } = await import('../project');
+      const { saveProjectWithDialog } = await import('../project');
 
       const state = {
         imagePath: currentImagePath,
@@ -253,6 +255,18 @@
     setTimeout(() => (saveStatus = null), 2000);
   }
 
+  /**
+   * Loads the built-in deterministic test image (useful for demos and E2E tests).
+   * Shows a ruler-like pattern with a 10 cm reference bar.
+   */
+  function loadTestImage() {
+    const dataUrl = createTestCalibrationImage(width, height);
+    loadImage(dataUrl);
+    currentImagePath = null;
+    saveStatus = 'Testbild geladen';
+    setTimeout(() => (saveStatus = null), 1500);
+  }
+
   // Public API for parent / tests
   export function getReferenceLine() {
     return referenceStart && referenceEnd
@@ -273,13 +287,39 @@
   }
 
   /**
-   * Loads a real image file into the canvas.
-   * Uses convertFileSrc for Tauri local file access.
+   * Loads an image into the canvas.
+   * Accepts either a real filesystem path (uses convertFileSrc for Tauri)
+   * or a browser-fetchable source: data URL, http(s) URL, or root-relative path (for E2E tests).
    */
-  export function loadImage(path: string) {
-    currentImagePath = path;
-    const safeSrc = convertFileSrc(path);
+  export function loadImage(pathOrDataUrl: string) {
+    const looksLikeWebSrc =
+      pathOrDataUrl.startsWith('data:') ||
+      pathOrDataUrl.startsWith('http://') ||
+      pathOrDataUrl.startsWith('https://') ||
+      pathOrDataUrl.startsWith('blob:');
+
+    if (looksLikeWebSrc) {
+      currentImagePath = null;
+      loadImageIntoLayer(pathOrDataUrl);
+      return;
+    }
+
+    // Everything else (absolute filesystem paths from the native dialog, or project files)
+    // must go through convertFileSrc so the WebView can actually load them.
+    // We no longer rely on a "/" heuristic because both real FS paths on macOS
+    // and potential web assets can start with "/". We always treat non-web-src as FS.
+
+    // Tauri desktop or absolute fs path from dialog/project
+    currentImagePath = pathOrDataUrl;
+    const safeSrc = convertFileSrc(pathOrDataUrl);
     loadImageIntoLayer(safeSrc);
+  }
+
+  // E2E test support: expose loadImage so Playwright can inject real images (e.g. pforte-fuersthof.jpg)
+  // without native dialogs or Tauri fs APIs. Only present in the browser context.
+  if (typeof window !== 'undefined') {
+    (window as any).__e2e = (window as any).__e2e || {};
+    (window as any).__e2e.loadImage = loadImage;
   }
 
   /**
@@ -438,18 +478,44 @@
       currentKonvaImage = null;
     }
 
+    // Reset E2E marker when starting a new load
+    const kContainer = document.querySelector('[data-testid="konva-container"]');
+    if (kContainer) kContainer.removeAttribute('data-has-bg-image');
+
     const img = new Image();
     img.onload = () => {
+      // Fit large photos (e.g. 2160×2880) into the fixed canvas (920×680) while preserving aspect ratio.
+      // Never upscale; center the result.
+      const maxW = width;
+      const maxH = height;
+      const s = Math.min(maxW / img.width, maxH / img.height, 1);
+
+      const dispW = img.width * s;
+      const dispH = img.height * s;
+      const x = (maxW - dispW) / 2;
+      const y = (maxH - dispH) / 2;
+
       const konvaImage = new Konva.Image({
         image: img,
-        x: 0,
-        y: 0,
+        x,
+        y,
         width: img.width,
         height: img.height,
+        scaleX: s,
+        scaleY: s,
       });
       mainLayerRef.add(konvaImage);
       currentKonvaImage = konvaImage;
       mainLayerRef.draw();
+
+      // E2E test marker so specs can assert the background image was rendered
+      const kContainer = document.querySelector('[data-testid="konva-container"]');
+      if (kContainer) kContainer.setAttribute('data-has-bg-image', 'true');
+    };
+    img.onerror = () => {
+      console.error('Image load failed for src:', src);
+      saveStatus = 'Bild konnte nicht geladen werden (evtl. Berechtigungsproblem)';
+      setTimeout(() => (saveStatus = null), 3500);
     };
     img.src = src;
   }
@@ -466,6 +532,7 @@
       onMeasurementLineComplete: handleMeasurementLineComplete,
     }}
     class="konva-container"
+    data-testid="konva-container"
     style="width: {width}px; height: {height}px; border: 1px solid #ccc; cursor: {measurementMode ? 'crosshair' : 'default'};"
   ></div>
 
@@ -517,8 +584,9 @@
     {/if}
 
     <!-- Module 8/9: Image, Project & Export controls -->
-    <div class="persistence-tools">
+    <div class="persistence-tools" data-testid="persistence-tools">
       <button onclick={handleLoadImage}>Load Image</button>
+      <button onclick={loadTestImage}>Testbild laden</button>
       <button onclick={handleSaveProject}>Save Project</button>
       <button onclick={handleLoadProject}>Load Project</button>
       {#if measurements.length > 0}

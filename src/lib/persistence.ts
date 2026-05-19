@@ -26,6 +26,8 @@ export interface MeasurementState {
   endY: number;
   realLength: number;
   unit: Unit;
+  label: string;
+  notes: string;
 }
 
 /**
@@ -51,6 +53,8 @@ export function measurementsToState(measurements: Measurement[]): MeasurementSta
     endY: m.end.y,
     realLength: m.realLength,
     unit: m.unit,
+    label: m.label,
+    notes: m.notes,
   }));
 }
 

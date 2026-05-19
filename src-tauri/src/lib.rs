@@ -44,6 +44,12 @@ pub struct MeasurementState {
     /// Real-world length in the calibration's unit
     pub real_length: f64,
     pub unit: String,
+    /// User-assigned label (e.g. "Fensterbreite")
+    #[serde(default)]
+    pub label: String,
+    /// Free-form notes
+    #[serde(default)]
+    pub notes: String,
 }
 
 /// Saves the current project state to disk as pretty-printed JSON.
@@ -101,6 +107,8 @@ mod tests {
                     end_y: 340.0,
                     real_length: 8.41,
                     unit: "cm".to_string(),
+                    label: "Fensterbreite".to_string(),
+                    notes: "Holzrahmen".to_string(),
                 },
                 MeasurementState {
                     id: "m2".to_string(),
@@ -110,6 +118,8 @@ mod tests {
                     end_y: 720.0,
                     real_length: 5.15,
                     unit: "cm".to_string(),
+                    label: "".to_string(),
+                    notes: "".to_string(),
                 },
             ],
         };

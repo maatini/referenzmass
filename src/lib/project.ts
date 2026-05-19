@@ -70,6 +70,17 @@ export async function loadProjectWithDialog(): Promise<{ path: string; state: Pr
 // ============================================================================
 
 /**
+ * Escapes a string for safe inclusion in a CSV field.
+ */
+function escapeCsvField(value: string): string {
+  const s = value ?? '';
+  if (!s.includes(',') && !s.includes('"') && !s.includes('\n')) {
+    return s;
+  }
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+/**
  * Generates CSV content from the current measurements and calibration.
  */
 function generateMeasurementsCSV(
@@ -88,18 +99,20 @@ function generateMeasurementsCSV(
   }
 
   lines.push('');
-  lines.push('ID,Start X,Start Y,End X,End Y,Length,Unit');
+  lines.push('ID,Start X,Start Y,End X,End Y,Length,Unit,Label,Notes');
 
   for (const m of measurements) {
     lines.push(
       [
         m.id,
-        m.start.x,
-        m.start.y,
-        m.end.x,
-        m.end.y,
+        m.start.x.toFixed(1),
+        m.start.y.toFixed(1),
+        m.end.x.toFixed(1),
+        m.end.y.toFixed(1),
         m.realLength.toFixed(4),
         m.unit,
+        escapeCsvField(m.label),
+        escapeCsvField(m.notes),
       ].join(',')
     );
   }

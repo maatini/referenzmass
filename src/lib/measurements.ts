@@ -14,6 +14,10 @@ export interface Measurement {
   /** Real-world length in the calibration's unit */
   realLength: number;
   unit: Unit;
+  /** User-assigned label (e.g. "Fensterbreite", "Türhöhe") */
+  label: string;
+  /** Free-form notes (material, conditions, remarks) */
+  notes: string;
 }
 
 /**
@@ -33,6 +37,8 @@ export function createMeasurement(
     end,
     realLength,
     unit: calibration.unit,
+    label: '',
+    notes: '',
   };
 }
 

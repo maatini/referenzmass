@@ -26,6 +26,8 @@ describe('Export Functionality (Module 9)', () => {
       end: { x: 400, y: 200 },
       realLength: 7.02,
       unit: 'cm',
+      label: 'Fensterbreite',
+      notes: 'Holzrahmen, ca. 2 Jahre alt',
     },
     {
       id: 'm2',
@@ -33,6 +35,8 @@ describe('Export Functionality (Module 9)', () => {
       end: { x: 150, y: 550 },
       realLength: 4.12,
       unit: 'cm',
+      label: '',
+      notes: '',
     },
   ];
 
@@ -53,9 +57,9 @@ describe('Export Functionality (Module 9)', () => {
 
     expect(writtenContent).toContain('# ReferenzMaß Measurement Export');
     expect(writtenContent).toContain('Scale: 0.0234 cm/px');
-    expect(writtenContent).toContain('ID,Start X,Start Y,End X,End Y,Length,Unit');
-    expect(writtenContent).toContain('m1,100,200,400,200,7.0200,cm');
-    expect(writtenContent).toContain('m2,150,300,150,550,4.1200,cm');
+    expect(writtenContent).toContain('ID,Start X,Start Y,End X,End Y,Length,Unit,Label,Notes');
+    expect(writtenContent).toContain('m1,100.0,200.0,400.0,200.0,7.0200,cm,Fensterbreite,"Holzrahmen, ca. 2 Jahre alt"');
+    expect(writtenContent).toContain('m2,150.0,300.0,150.0,550.0,4.1200,cm,,');
 
     expect(result).toBe('/tmp/export.csv');
   });

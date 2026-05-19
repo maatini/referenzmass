@@ -354,6 +354,8 @@
         end: { x: m.endX, y: m.endY },
         realLength: m.realLength,
         unit: m.unit,
+        label: m.label ?? '',
+        notes: m.notes ?? '',
       }));
     } else {
       measurements = [];
@@ -569,14 +571,33 @@
           <div class="measurements-list">
             <strong>Measurements:</strong>
             {#each measurements as m, i (m.id)}
-              <button 
-                type="button"
+              <div
                 class="measurement-item"
                 class:selected={m.id === selectedMeasurementId}
                 onclick={() => { selectedMeasurementId = m.id; redrawMeasurements(); }}
+                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedMeasurementId = m.id; redrawMeasurements(); } }}
+                role="button"
+                tabindex="0"
               >
-                #{i + 1}: <strong>{m.realLength.toFixed(2)} {m.unit}</strong>
-              </button>
+                <div class="measurement-header">
+                  <span class="measurement-index">#{i + 1}</span>
+                  <input
+                    type="text"
+                    class="measurement-label-input"
+                    placeholder="Bezeichnung…"
+                    bind:value={m.label}
+                    aria-label="Bezeichnung"
+                  />
+                  <strong class="measurement-length">{m.realLength.toFixed(2)} {m.unit}</strong>
+                </div>
+                <textarea
+                  class="measurement-notes-input"
+                  placeholder="Notizen (Material, Bedingungen…)&#10;"
+                  bind:value={m.notes}
+                  rows={2}
+                  aria-label="Notizen"
+                ></textarea>
+              </div>
             {/each}
           </div>
         {/if}
@@ -657,20 +678,79 @@
   .measurements-list {
     margin-top: 4px;
     font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
   .measurement-item {
-    padding: 2px 6px;
+    padding: 6px 8px;
     cursor: pointer;
-    border: none;
-    background: transparent;
-    text-align: left;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: #fafafa;
     width: 100%;
     font-size: inherit;
+    box-sizing: border-box;
+  }
+  .measurement-item:hover {
+    border-color: #bbb;
   }
 
   .measurement-item.selected {
     background-color: #fff3e0;
-    border-radius: 3px;
+    border-color: #ff9800;
+  }
+
+  .measurement-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .measurement-index {
+    color: #888;
+    font-weight: 500;
+    min-width: 24px;
+  }
+
+  .measurement-label-input {
+    flex: 1;
+    border: 1px solid transparent;
+    border-bottom: 1px dashed #ccc;
+    background: transparent;
+    font-size: 13px;
+    padding: 2px 4px;
+    outline: none;
+    min-width: 0;
+  }
+  .measurement-label-input:focus {
+    border-color: #0066cc;
+    border-bottom-style: solid;
+    background: #fff;
+  }
+
+  .measurement-length {
+    color: #111;
+    white-space: nowrap;
+  }
+
+  .measurement-notes-input {
+    width: 100%;
+    margin-top: 6px;
+    border: 1px solid transparent;
+    border-bottom: 1px dashed #ddd;
+    background: transparent;
+    font-size: 12px;
+    padding: 2px 4px;
+    outline: none;
+    resize: vertical;
+    box-sizing: border-box;
+    color: #555;
+  }
+  .measurement-notes-input:focus {
+    border-color: #0066cc;
+    border-bottom-style: solid;
+    background: #fff;
   }
 
   .persistence-tools {

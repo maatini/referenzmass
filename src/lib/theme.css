@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Sleek Dark Theme Color System (HSL) */
+  --bg-app: #080a0f;
+  --bg-panel: rgba(17, 22, 34, 0.75);
+  --bg-panel-solid: #111622;
+  --bg-element: #1b2234;
+  --bg-element-hover: #262f48;
+  
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: #3b82f6;
+  
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  
+  --accent: #ff5722; /* Vibrant Orange for reference lines */
+  --accent-hover: #ff7043;
+  --accent-selected: #f59e0b; /* Amber for active measurement */
+  
+  --brand: #3b82f6; /* Modern Blue */
+  --brand-hover: #60a5fa;
+  
+  --success: #10b981;
+  --error: #ef4444;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
+  --glass-blur: blur(16px);
+}
+
+/* Global Reset & Base styling */
+:global(html), :global(body) {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar customization */
+:global(::-webkit-scrollbar) {
+  width: 6px;
+  height: 6px;
+}
+:global(::-webkit-scrollbar-track) {
+  background: transparent;
+}
+:global(::-webkit-scrollbar-thumb) {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+:global(::-webkit-scrollbar-thumb:hover) {
+  background: var(--text-muted);
+}

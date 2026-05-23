@@ -30,7 +30,7 @@ describe('project.ts (Module 7 - Dialog layer)', () => {
 
     const mockState: ProjectState = {
       imagePath: null,
-      calibration: { scale: 0.1, unit: 'cm' },
+      calibration: { calibType: 'line', scale: 0.1, unit: 'cm', homography: null },
       measurements: [],
     };
 
@@ -47,7 +47,7 @@ describe('project.ts (Module 7 - Dialog layer)', () => {
 
     const mockState: ProjectState = {
       imagePath: '/some/image.jpg',
-      calibration: { scale: 0.05, unit: 'mm' },
+      calibration: { calibType: 'line', scale: 0.05, unit: 'mm', homography: null },
       measurements: [],
     };
     vi.mocked(loadProject).mockResolvedValue(mockState);

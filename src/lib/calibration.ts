@@ -6,14 +6,19 @@
  */
 
 import { distance, type Point } from './geometry';
+import { computeHomography, projectDistance } from './homography';
 
 export type Unit = 'mm' | 'cm' | 'm';
+export type CalibrationType = 'line' | 'plane';
 
 export interface Calibration {
+  readonly type: CalibrationType;
   /** Real-world units per pixel (e.g. 0.1 means 0.1 cm per pixel) */
   readonly scale: number;
   /** The unit of the scale and all measurements produced from it */
   readonly unit: Unit;
+  /** Homography matrix mapping pixels to plane coordinates (only for type = 'plane') */
+  readonly homography?: number[];
 }
 
 const UNIT_FACTORS: Record<Unit, number> = {
@@ -64,8 +69,52 @@ export function createCalibration(
   const scale = realWorldLength / pixelDistance;
 
   return {
+    type: 'line',
     scale,
     unit,
+  };
+}
+
+/**
+ * Creates a plane calibration from 4 source points on the image plane
+ * and the real-world width/height of the reference quadrilateral.
+ */
+export function createPlaneCalibration(
+  srcPoints: Point[],
+  realWidth: number,
+  realHeight: number,
+  unit: Unit
+): Calibration {
+  if (realWidth <= 0 || realHeight <= 0) {
+    throw new Error('Plane dimensions must be greater than zero');
+  }
+  if (srcPoints.length !== 4) {
+    throw new Error('Plane calibration requires exactly 4 points');
+  }
+
+  // Define destination coordinates in real-world space.
+  // Origin (0,0) is at top-left.
+  const dstPoints: Point[] = [
+    { x: 0, y: 0 },                  // TL
+    { x: realWidth, y: 0 },          // TR
+    { x: realWidth, y: realHeight }, // BR
+    { x: 0, y: realHeight },         // BL
+  ];
+
+  const homography = computeHomography(srcPoints, dstPoints);
+
+  // Compute a fallback linear scale (average of width and height scales) for legacy compatibility
+  const pixelWidth = distance(srcPoints[0], srcPoints[1]);
+  const pixelHeight = distance(srcPoints[0], srcPoints[3]);
+  const scaleX = realWidth / (pixelWidth || 1);
+  const scaleY = realHeight / (pixelHeight || 1);
+  const scale = (scaleX + scaleY) / 2;
+
+  return {
+    type: 'plane',
+    scale,
+    unit,
+    homography,
   };
 }
 
@@ -74,11 +123,17 @@ export function createCalibration(
  */
 export function measure(
   calibration: Calibration,
-  pixelDistance: number
+  pixelDistance: number,
+  start?: Point,
+  end?: Point
 ): number {
-  if (pixelDistance < 0) {
-    // Allow negative distances for direction-aware use cases, but keep sign
-    return calibration.scale * pixelDistance;
+  if (calibration.type === 'plane' && calibration.homography && start && end) {
+    try {
+      return projectDistance(start, end, calibration.homography);
+    } catch {
+      // Fallback if projection fails
+      return calibration.scale * pixelDistance;
+    }
   }
   return calibration.scale * pixelDistance;
 }

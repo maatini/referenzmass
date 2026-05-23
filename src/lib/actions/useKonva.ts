@@ -24,6 +24,18 @@ export interface UseKonvaConfig {
 
   /** Called when a measurement line has been completed (Module 4) */
   onMeasurementLineComplete?: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
+
+  /** Called when the stage scale or position changes (zoom/pan) */
+  onStageTransform?: (scale: number, x: number, y: number) => void;
+
+  /** Called with container-relative pointer position while drawing, or null when done */
+  onDrawingPointerMove?: (pos: { x: number; y: number } | null) => void;
+
+  /** Calibration mode: 2D line or 3D perspective plane */
+  calibrationType?: 'line' | 'plane';
+
+  /** Called when a point is placed for the 3D plane calibration */
+  onPlanePointAdded?: (pos: { x: number; y: number }) => void;
 }
 
 export interface UseKonvaReturn {
@@ -46,23 +58,39 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
   stage.add(mainLayer);
   stage.add(drawingLayer);
 
+  // Store mutable config fields so update() can keep them in sync
+  let currentConfig = config;
+
   // Internal drawing state for reference line (Module 3)
   let isDrawing = false;
   let startPoint: { x: number; y: number } | null = null;
   let tempLine: Konva.Line | null = null;
 
+  // Track state of spacebar panning
+  let spacePressed = false;
+
   function getRelativePointerPosition() {
     const pos = stage.getPointerPosition();
     if (!pos) return null;
     return {
-      x: pos.x,
-      y: pos.y,
+      // Map screen coordinates back to stage space (accounts for zoom/pan)
+      x: (pos.x - stage.x()) / stage.scaleX(),
+      y: (pos.y - stage.y()) / stage.scaleY(),
     };
   }
 
   function startDrawing() {
+    if (spacePressed || stage.draggable()) return;
+
     const pos = getRelativePointerPosition();
     if (!pos) return;
+
+    if (currentConfig.calibrationType === 'plane' && !currentConfig.measurementMode) {
+      if (currentConfig.onPlanePointAdded) {
+        currentConfig.onPlanePointAdded(pos);
+      }
+      return;
+    }
 
     isDrawing = true;
     startPoint = pos;
@@ -76,6 +104,11 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
       dash: [6, 3],
     });
     drawingLayer.add(tempLine);
+
+    const stagePos = stage.getPointerPosition();
+    if (stagePos && currentConfig.onDrawingPointerMove) {
+      currentConfig.onDrawingPointerMove(stagePos);
+    }
   }
 
   function updateDrawing() {
@@ -86,6 +119,11 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
 
     tempLine.points([startPoint.x, startPoint.y, pos.x, pos.y]);
     drawingLayer.batchDraw();
+
+    const stagePos = stage.getPointerPosition();
+    if (stagePos && currentConfig.onDrawingPointerMove) {
+      currentConfig.onDrawingPointerMove(stagePos);
+    }
   }
 
   function finishDrawing() {
@@ -106,10 +144,10 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
 
     // Only complete if the line has meaningful length
     if (dist > 5) {
-      if (config.measurementMode && config.onMeasurementLineComplete) {
-        config.onMeasurementLineComplete(startPoint, pos);
-      } else if (!config.measurementMode && config.onReferenceLineComplete) {
-        config.onReferenceLineComplete(startPoint, pos);
+      if (currentConfig.measurementMode && currentConfig.onMeasurementLineComplete) {
+        currentConfig.onMeasurementLineComplete(startPoint, pos);
+      } else if (!currentConfig.measurementMode && currentConfig.onReferenceLineComplete) {
+        currentConfig.onReferenceLineComplete(startPoint, pos);
       }
     }
 
@@ -124,6 +162,9 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
     drawingLayer.batchDraw();
     isDrawing = false;
     startPoint = null;
+    if (currentConfig.onDrawingPointerMove) {
+      currentConfig.onDrawingPointerMove(null);
+    }
   }
 
   // Attach pointer handlers for reference line drawing (Module 3 calibration slice)
@@ -144,6 +185,76 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
     if (isDrawing) cleanupDrawing();
   });
 
+  // Zoom with scroll wheel centered on cursor
+  const scaleBy = 1.08;
+  stage.on('wheel', (e) => {
+    e.evt.preventDefault();
+    const oldScale = stage.scaleX();
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const mousePointTo = {
+      x: (pointer.x - stage.x()) / oldScale,
+      y: (pointer.y - stage.y()) / oldScale,
+    };
+
+    let newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    // Limit zoom factor
+    newScale = Math.max(0.1, Math.min(10, newScale));
+
+    stage.scale({ x: newScale, y: newScale });
+
+    const newPos = {
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
+    };
+    stage.position(newPos);
+    stage.batchDraw();
+
+    if (currentConfig.onStageTransform) {
+      currentConfig.onStageTransform(newScale, newPos.x, newPos.y);
+    }
+  });
+
+  // Setup global event listeners for keyboard Pan activation
+  function handleKeyDown(e: KeyboardEvent) {
+    if (e.code === 'Space' && !spacePressed) {
+      // Prevent browser default scrolling
+      e.preventDefault();
+      spacePressed = true;
+      stage.draggable(true);
+      node.style.cursor = 'grab';
+    }
+  }
+
+  function handleKeyUp(e: KeyboardEvent) {
+    if (e.code === 'Space') {
+      spacePressed = false;
+      stage.draggable(false);
+      node.style.cursor = currentConfig.measurementMode ? 'crosshair' : 'default';
+    }
+  }
+
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
+
+  stage.on('dragstart', () => {
+    if (spacePressed) node.style.cursor = 'grabbing';
+  });
+
+  stage.on('dragmove', () => {
+    if (currentConfig.onStageTransform) {
+      currentConfig.onStageTransform(stage.scaleX(), stage.x(), stage.y());
+    }
+  });
+
+  stage.on('dragend', () => {
+    if (spacePressed) node.style.cursor = 'grab';
+    if (currentConfig.onStageTransform) {
+      currentConfig.onStageTransform(stage.scaleX(), stage.x(), stage.y());
+    }
+  });
+
   // Notify consumer that stage is ready
   if (config.onReady) {
     // Attach layers so consumers can easily add images/shapes
@@ -161,6 +272,8 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
     drawingLayer,
     destroy: () => {
       stage.destroy();
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
     },
   };
 
@@ -168,9 +281,34 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
   return {
     destroy() {
       stage.destroy();
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
     },
     // Allow updating config if needed in future
     update(newConfig: Partial<UseKonvaConfig>) {
+      // Sync mutable config fields so callbacks see the latest values
+      if (newConfig.measurementMode !== undefined) {
+        currentConfig.measurementMode = newConfig.measurementMode;
+      }
+      if (newConfig.onReferenceLineComplete !== undefined) {
+        currentConfig.onReferenceLineComplete = newConfig.onReferenceLineComplete;
+      }
+      if (newConfig.onMeasurementLineComplete !== undefined) {
+        currentConfig.onMeasurementLineComplete = newConfig.onMeasurementLineComplete;
+      }
+      if (newConfig.onStageTransform !== undefined) {
+        currentConfig.onStageTransform = newConfig.onStageTransform;
+      }
+      if (newConfig.onDrawingPointerMove !== undefined) {
+        currentConfig.onDrawingPointerMove = newConfig.onDrawingPointerMove;
+      }
+      if (newConfig.calibrationType !== undefined) {
+        currentConfig.calibrationType = newConfig.calibrationType;
+      }
+      if (newConfig.onPlanePointAdded !== undefined) {
+        currentConfig.onPlanePointAdded = newConfig.onPlanePointAdded;
+      }
+
       if (newConfig.width !== undefined || newConfig.height !== undefined) {
         stage.width(newConfig.width ?? stage.width());
         stage.height(newConfig.height ?? stage.height());

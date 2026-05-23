@@ -41,6 +41,7 @@ describe('Export Functionality (Module 9)', () => {
   ];
 
   const mockCalibration: Calibration = {
+    type: 'line',
     scale: 0.0234,
     unit: 'cm',
   };

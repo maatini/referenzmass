@@ -1,9 +1,3 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
 /// Simple IPC health-check command for Module 1 baseline.
 #[tauri::command]
 fn ping() -> String {
@@ -28,10 +22,20 @@ pub struct ProjectState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CalibrationState {
+    /// Calibration type: "line" or "plane"
+    #[serde(default = "default_calib_type")]
+    pub calib_type: String,
     /// Real-world units per pixel (e.g. 0.02 means 0.02 cm/px)
     pub scale: f64,
     /// The unit the scale is expressed in ("mm", "cm", or "m")
     pub unit: String,
+    /// 3x3 homography matrix (9 elements), only present for plane calibration
+    #[serde(default)]
+    pub homography: Option<Vec<f64>>,
+}
+
+fn default_calib_type() -> String {
+    "line".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -88,15 +92,17 @@ mod tests {
     }
 
     /// Module 5 vertical slice test:
-    /// Round-trip a realistic ProjectState through save/load using a temp file.
+    /// Round-trip a realistic ProjectState (line calibration) through save/load using a temp file.
     #[test]
-    fn test_project_state_roundtrip_via_file() {
+    fn test_project_state_roundtrip_line_calibration() {
         // Create a realistic mock project state
         let original = ProjectState {
             image_path: Some("/Users/test/photos/part.jpg".to_string()),
             calibration: Some(CalibrationState {
+                calib_type: "line".to_string(),
                 scale: 0.0234,
                 unit: "cm".to_string(),
+                homography: None,
             }),
             measurements: vec![
                 MeasurementState {
@@ -152,6 +158,64 @@ mod tests {
         // Cleanup
         cleanup();
     }
+
+    /// Round-trip a ProjectState with plane calibration (homography) through save/load.
+    #[test]
+    fn test_project_state_roundtrip_plane_calibration() {
+        let original = ProjectState {
+            image_path: Some("/Users/test/photos/floorplan.jpg".to_string()),
+            calibration: Some(CalibrationState {
+                calib_type: "plane".to_string(),
+                scale: 0.015,
+                unit: "m".to_string(),
+                homography: Some(vec![
+                    0.98, -0.02, 10.0,
+                    0.01, 0.97, 5.0,
+                    -0.0001, 0.0002, 1.0,
+                ]),
+            }),
+            measurements: vec![
+                MeasurementState {
+                    id: "m-plane-1".to_string(),
+                    start_x: 100.0,
+                    start_y: 200.0,
+                    end_x: 400.0,
+                    end_y: 200.0,
+                    real_length: 4.5,
+                    unit: "m".to_string(),
+                    label: "Raumbreite".to_string(),
+                    notes: "Wohnzimmer".to_string(),
+                },
+            ],
+        };
+
+        let mut temp_path: PathBuf = env::temp_dir();
+        temp_path.push(format!(
+            "referenzmass_test_project_plane_{}.json",
+            std::process::id()
+        ));
+
+        let cleanup = || {
+            let _ = std::fs::remove_file(&temp_path);
+        };
+
+        let save_result = save_project(temp_path.to_string_lossy().to_string(), original.clone());
+        assert!(save_result.is_ok(), "save_project failed: {:?}", save_result);
+
+        let load_result = load_project(temp_path.to_string_lossy().to_string());
+        assert!(load_result.is_ok(), "load_project failed: {:?}", load_result);
+
+        let loaded = load_result.unwrap();
+        assert_eq!(loaded, original);
+
+        // Verify plane-specific fields
+        let calib = loaded.calibration.unwrap();
+        assert_eq!(calib.calib_type, "plane");
+        assert!(calib.homography.is_some());
+        assert_eq!(calib.homography.unwrap().len(), 9);
+
+        cleanup();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -160,7 +224,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, ping, save_project, load_project])
+        .invoke_handler(tauri::generate_handler![ping, save_project, load_project])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

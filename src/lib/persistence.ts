@@ -14,8 +14,10 @@ export interface ProjectState {
 }
 
 export interface CalibrationState {
+  calibType: 'line' | 'plane';
   scale: number;
   unit: Unit;
+  homography: number[] | null;
 }
 
 export interface MeasurementState {
@@ -36,8 +38,23 @@ export interface MeasurementState {
 export function calibrationToState(calibration: Calibration | null): CalibrationState | null {
   if (!calibration) return null;
   return {
+    calibType: calibration.type,
     scale: calibration.scale,
     unit: calibration.unit,
+    homography: calibration.homography ?? null,
+  };
+}
+
+/**
+ * Converts serializable CalibrationState back to an internal Calibration.
+ */
+export function stateToCalibration(state: CalibrationState | null): Calibration | null {
+  if (!state) return null;
+  return {
+    type: state.calibType,
+    scale: state.scale,
+    unit: state.unit,
+    homography: state.homography ?? undefined,
   };
 }
 

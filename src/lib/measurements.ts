@@ -29,7 +29,7 @@ export function createMeasurement(
   calibration: Calibration
 ): Measurement {
   const pixelDistance = distance(start, end);
-  const realLength = measure(calibration, pixelDistance);
+  const realLength = measure(calibration, pixelDistance, start, end);
 
   return {
     id: crypto.randomUUID(),
@@ -51,7 +51,7 @@ export function recalculateMeasurement(
   calibration: Calibration
 ): Measurement {
   const pixelDistance = distance(measurement.start, measurement.end);
-  const newRealLength = measure(calibration, pixelDistance);
+  const newRealLength = measure(calibration, pixelDistance, measurement.start, measurement.end);
 
   return {
     ...measurement,

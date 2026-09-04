@@ -8,6 +8,7 @@
 
 import Konva from 'konva';
 import type { Stage, Layer } from 'konva/lib/Stage';
+import { screenLengthToImage } from '../geometry';
 
 export interface UseKonvaConfig {
   width: number;
@@ -95,13 +96,14 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
     isDrawing = true;
     startPoint = pos;
 
-    // Create temporary line
+    const viewScale = stage.scaleX() || 1;
+    // Create temporary line (stroke/dash in screen-constant image units)
     tempLine = new Konva.Line({
       points: [pos.x, pos.y, pos.x, pos.y],
       stroke: '#ff3e00',
-      strokeWidth: 3,
+      strokeWidth: screenLengthToImage(3, viewScale),
       lineCap: 'round',
-      dash: [6, 3],
+      dash: [screenLengthToImage(6, viewScale), screenLengthToImage(3, viewScale)],
     });
     drawingLayer.add(tempLine);
 
@@ -141,9 +143,10 @@ export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
     const dx = pos.x - startPoint.x;
     const dy = pos.y - startPoint.y;
     const dist = Math.hypot(dx, dy);
+    const viewScale = stage.scaleX() || 1;
 
-    // Only complete if the line has meaningful length
-    if (dist > 5) {
+    // Threshold is screen pixels so a tiny drag on a large fitted image still counts as a click
+    if (dist * viewScale > 5) {
       if (currentConfig.measurementMode && currentConfig.onMeasurementLineComplete) {
         currentConfig.onMeasurementLineComplete(startPoint, pos);
       } else if (!currentConfig.measurementMode && currentConfig.onReferenceLineComplete) {

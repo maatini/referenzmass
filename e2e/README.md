@@ -43,5 +43,5 @@ The first run will download the Playwright browsers (Chromium).
 
 ## Relation to unit tests
 
-Vitest (`pnpm test`) continues to be the place for fast pure logic and component surface tests.  
+Vitest (`pnpm test`, einmalig via `vitest run`) continues to be the place for fast pure logic and component surface tests.  
 Playwright complements it by testing the integrated Konva drawing experience that is very hard to simulate in jsdom.

@@ -1,33 +1,57 @@
-# Tauri + SvelteKit
+# ReferenzMaß
 
-This template should help get you started developing with Tauri and SvelteKit in Vite.
+Desktop-App für photogrammetrische Maße: Foto laden, kalibrieren, Strecken messen, als CSV exportieren.
 
-**ReferenzMaß** – Photogrammetry measurement desktop application.
+- **Line-Kalibrierung** — Referenzstrecke mit bekannter realer Länge
+- **Plane-Kalibrierung** — 4 Punkte + Homographie für perspektivische Ebenen
+- Messlinien mit Label/Notizen, Loupe, Zoom/Pan
+- Projekt speichern/laden (JSON über Tauri)
 
-## Recommended IDE Setup
+Version `0.1.0` · Identifier `de.referenzmass.app` · Status: nutzbar, Persistenz noch nicht produktionsreif (siehe unten).
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+## Stack
 
-## Testing
+Tauri 2 · Svelte 5 (Runes) · SvelteKit (`adapter-static`) · Konva 10 · Vitest · Playwright · Rust (dünnes IPC)
 
-### Unit & Component Tests (Vitest)
+Domain liegt in `src/lib/` (kein UI). Canvas-UI in `CalibrationCanvas.svelte`.
 
-Fast tests for domain logic and component behavior:
+## Setup
 
-```bash
-pnpm test
-```
-
-### End-to-End Tests (Playwright)
-
-Real browser tests that exercise the Konva canvas, drawing interactions, calibration and measurement workflows:
+Voraussetzung: [devbox](https://www.jetify.com/devbox) **oder** Node 20, pnpm 9.12.3, Rust stable, Tauri-Systemdeps.
 
 ```bash
-pnpm test:e2e          # headless
-pnpm test:e2e:ui       # interactive UI mode (recommended)
-pnpm test:e2e:headed   # visible browser window
+devbox shell          # Node, pnpm, rustup, clippy/rustfmt
+pnpm install
+pnpm tauri dev        # oder: devbox run dev
 ```
 
-See [e2e/README.md](e2e/README.md) for details and scope.
+Ohne Devbox: [Tauri-Prerequisites](https://v2.tauri.app/start/prerequisites/) + `pnpm install`.
 
-**Note**: These are frontend E2E tests (run against the Vite dev server). They do not launch the native Tauri binary or real system dialogs (macOS-friendly approach). Native behavior is covered by the Rust unit tests in `src-tauri/`.
+## Befehle
+
+| Befehl | Was |
+|---|---|
+| `pnpm tauri dev` | Native App + Vite auf Port 1420 |
+| `pnpm test` | Vitest, einmalig (`vitest run`) |
+| `pnpm test:watch` | Vitest Watch |
+| `pnpm check` | `svelte-kit sync` + `svelte-check` (derzeit 4 vorbestehende Fehler) |
+| `pnpm test:rust` | `cargo test` in `src-tauri` |
+| `pnpm check:all` | check + Vitest + Rust |
+| `pnpm test:e2e` | Playwright gegen Vite (kein natives Tauri) |
+
+## Bekannte Lücken (P0)
+
+Serde-camelCase, Restore der Referenzgeometrie und Originalpixel-Koordinaten sind erledigt. Offen: Messungs-Drag nutzt noch `dist * calibration.scale` statt `measure()` (Plane falsch); Delete/Backspace löscht Messungen auch in Inputs. Details: [`AGENTS.md`](./AGENTS.md), Stand: [`HANDOFF.md`](./HANDOFF.md).
+
+## Docs
+
+| Datei | Rolle |
+|---|---|
+| [`AGENTS.md`](./AGENTS.md) | Regeln für Agenten (Stack, Befehle, P0, Constraints) |
+| [`HANDOFF.md`](./HANDOFF.md) | Session-Stand, nächster Schritt |
+| [`e2e/README.md`](./e2e/README.md) | Playwright-Scope |
+| `docs/status-2026-05-23.md` | Historischer Sprint-Stand |
+| `docs/improvement-plan.md` | Historischer Plan (teilweise erledigt, nicht das Backlog) |
+| `docs/edge-detection-plan.md` | Geplantes Canny/Snap — nicht vor P0 |
+
+IDE: VS Code + Svelte + Tauri + rust-analyzer (siehe `.vscode/extensions.json`).

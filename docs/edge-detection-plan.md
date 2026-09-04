@@ -1,6 +1,7 @@
 # ReferenzMaß — Kantendetektions-Plan
 
-> Stand: 2026-05-23 | Feature: Edge Detection & Snap-to-Edge
+> **Geplant, nicht implementiert.** Nicht beginnen, bevor Persistenz-P0 erledigt ist (`AGENTS.md`, `HANDOFF.md`).
+> Stand des Plans: 2026-05-23. Empfehlung bleibt Rust (`image` / `imageproc`), nicht Frontend-`getImageData`.
 
 ---
 

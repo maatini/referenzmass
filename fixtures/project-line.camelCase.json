@@ -1,0 +1,27 @@
+{
+  "imagePath": "/photos/part.jpg",
+  "calibration": {
+    "calibType": "line",
+    "scale": 0.02,
+    "unit": "cm",
+    "homography": null,
+    "referenceStart": { "x": 100, "y": 200 },
+    "referenceEnd": { "x": 600, "y": 200 },
+    "planePoints": [],
+    "realWidth": 10,
+    "realHeight": null
+  },
+  "measurements": [
+    {
+      "id": "m1",
+      "startX": 120,
+      "startY": 340,
+      "endX": 480,
+      "endY": 340,
+      "realLength": 7.2,
+      "unit": "cm",
+      "label": "Fensterbreite",
+      "notes": "Holzrahmen"
+    }
+  ]
+}

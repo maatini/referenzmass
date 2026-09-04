@@ -1,6 +1,9 @@
 # ReferenzMaß — Verbesserungsplan
 
-> Stand: 2026-05-23 | Basierend auf vollständiger Projektanalyse
+> **Historisch (2026-05-23), nicht die Quelle der Wahrheit.**
+> Aktuell: [`HANDOFF.md`](../HANDOFF.md) (Stand/nächster Schritt), [`AGENTS.md`](../AGENTS.md) (Regeln).
+>
+> Abgleich 2026-09-04: **A1–A4 erledigt** — Serde camelCase, Referenzpunkte/`realWidth`/`realHeight` persistiert, `restoreProject` + Load-`$effect`. Koordinatenraum (Originalpixel, Fit nur Stage) erledigt. **B1–B5 weitgehend** in `e2e/`. **D–G offen.** Nächster P0: Messungs-Drag, Delete-in-Inputs.
 
 ---
 

@@ -10,7 +10,7 @@
   import { untrack } from 'svelte';
   import { createCalibration, createPlaneCalibration, type Calibration, type Unit, type CalibrationType } from '../calibration';
   import { computeHomography, projectPoint } from '../homography';
-  import type { Point } from '../geometry';
+  import { fitView, screenLengthToImage, type Point } from '../geometry';
   import {
     createMeasurement,
     recalculateAllMeasurements,
@@ -20,7 +20,12 @@
     CalibrationState,
     MeasurementState,
   } from '../persistence';
-  import { calibrationToState, stateToCalibration, measurementsToState } from '../persistence';
+  import {
+    calibrationToState,
+    measurementsToState,
+    restoreProject,
+    shouldClearLiveCalibration,
+  } from '../persistence';
   import { getCurrentProjectPath } from '../project';
   import { convertFileSrc } from '@tauri-apps/api/core';
   import Konva from 'konva';
@@ -176,8 +181,12 @@
         onCalibrationChange?.(null);
       }
     } else {
-      calibration = null;
-      onCalibrationChange?.(null);
+      const geometryEmpty =
+        referenceStart === null && referenceEnd === null && planePoints.length === 0;
+      if (shouldClearLiveCalibration(canCalibrate, geometryEmpty, calibration !== null)) {
+        calibration = null;
+        onCalibrationChange?.(null);
+      }
     }
   });
 
@@ -243,25 +252,30 @@
       stageRef.position({ x: 0, y: 0 });
       stageRef.batchDraw();
     }
+    redrawMeasurements();
   }
 
   /**
    * Fits the loaded image to the canvas while preserving aspect ratio.
-   * Updates stage scale and position so the entire image is visible and centered.
+   * View-only: image stays in natural pixels; stage scale/position change.
    */
   function fitImageToCanvas() {
     if (!stageRef || !currentKonvaImage) return;
     const img = currentKonvaImage.image() as HTMLImageElement | null;
-    if (!img?.naturalWidth || !img?.naturalHeight) return;
-    const s = Math.min(canvasWidth / img.naturalWidth, canvasHeight / img.naturalHeight, 1);
-    stageScale = s;
-    const x = (canvasWidth - img.naturalWidth * s) / 2;
-    const y = (canvasHeight - img.naturalHeight * s) / 2;
-    stageX = x;
-    stageY = y;
-    stageRef.scale({ x: s, y: s });
-    stageRef.position({ x, y });
+    const naturalW = img?.naturalWidth || imageWidth;
+    const naturalH = img?.naturalHeight || imageHeight;
+    if (!naturalW || !naturalH) return;
+    const view = fitView(
+      { width: canvasWidth, height: canvasHeight },
+      { width: naturalW, height: naturalH }
+    );
+    stageScale = view.scale;
+    stageX = view.x;
+    stageY = view.y;
+    stageRef.scale({ x: view.scale, y: view.scale });
+    stageRef.position({ x: view.x, y: view.y });
     stageRef.batchDraw();
+    redrawMeasurements();
   }
 
   // === Module 7: Native dialog-based persistence handlers ===
@@ -283,7 +297,13 @@
 
       const state = {
         imagePath: currentImagePath,
-        calibration: calibrationToState(calib),
+        calibration: calibrationToState(calib, {
+          referenceStart,
+          referenceEnd,
+          planePoints,
+          realWidth: realWorldLength,
+          realHeight: calibrationType === 'plane' ? realWorldHeight : null,
+        }),
         measurements: measurementsToState(meas),
       };
 
@@ -447,33 +467,33 @@
     measurements?: MeasurementState[];
     imagePath?: string | null;
   }) {
-    // Clear current drawing state
-    referenceStart = null;
-    referenceEnd = null;
-    planePoints = [];
     measurementMode = false;
     selectedMeasurementId = null;
 
-    // Load calibration via proper deserialization (supports both line and plane)
-    const loadedCalib = stateToCalibration(data.calibration ?? null);
-    calibration = loadedCalib;
+    const restored = restoreProject({
+      imagePath: data.imagePath ?? null,
+      calibration: data.calibration ?? null,
+      measurements: data.measurements ?? [],
+    });
 
-    // Restore calibration type from persisted data
-    if (loadedCalib) {
-      calibrationType = loadedCalib.type;
+    calibrationType = restored.calibrationType;
+    referenceStart = restored.referenceStart;
+    referenceEnd = restored.referenceEnd;
+    planePoints = restored.planePoints;
+    if (restored.realWidth != null && restored.realWidth > 0) {
+      realWorldLength = restored.realWidth;
+    }
+    if (restored.realHeight != null && restored.realHeight > 0) {
+      realWorldHeight = restored.realHeight;
+    }
+    if (restored.unit) {
+      unit = restored.unit;
     }
 
-    // Convert and load measurements
-    if (data.measurements && data.measurements.length > 0 && loadedCalib) {
-      measurements = data.measurements.map((m) => ({
-        id: m.id,
-        start: { x: m.startX, y: m.startY },
-        end: { x: m.endX, y: m.endY },
-        realLength: m.realLength,
-        unit: m.unit,
-        label: m.label ?? '',
-        notes: m.notes ?? '',
-      }));
+    calibration = restored.calibration;
+
+    if (restored.calibration && restored.measurements.length > 0) {
+      measurements = restored.measurements;
     } else {
       measurements = [];
     }
@@ -519,6 +539,11 @@
   function redrawMeasurements() {
     if (!mainLayerRef) return;
 
+    const viewPx = (screen: number) => screenLengthToImage(screen, stageScale || 1);
+    const handleRadius = viewPx(7);
+    const labelFont = viewPx(13);
+    const labelLift = viewPx(12);
+
     // Remove previous visual nodes
     const childrenToRemove = mainLayerRef.getChildren((node: any) =>
       node.name && (
@@ -536,19 +561,20 @@
           points: [referenceStart.x, referenceStart.y, referenceEnd.x, referenceEnd.y],
           stroke: '#ff5722', // vibrant orange
           strokeWidth: 3,
+          strokeScaleEnabled: false,
           dash: [6, 4],
           lineCap: 'round',
         });
         mainLayerRef.add(refLine);
 
         const midX = (referenceStart.x + referenceEnd.x) / 2;
-        const midY = (referenceStart.y + referenceEnd.y) / 2 - 12;
+        const midY = (referenceStart.y + referenceEnd.y) / 2 - labelLift;
         const refLabel = new Konva.Text({
           name: 'reference-label',
           text: `Referenz: ${realWorldLength} ${unit}`,
           x: midX,
           y: midY,
-          fontSize: 13,
+          fontSize: labelFont,
           fontStyle: 'bold',
           fill: '#ff5722',
           align: 'center',
@@ -560,10 +586,11 @@
           name: 'reference-anchor-start',
           x: referenceStart.x,
           y: referenceStart.y,
-          radius: 7,
+          radius: handleRadius,
           fill: '#ffffff',
           stroke: '#ff5722',
           strokeWidth: 2,
+          strokeScaleEnabled: false,
           draggable: true,
         });
 
@@ -571,10 +598,11 @@
           name: 'reference-anchor-end',
           x: referenceEnd.x,
           y: referenceEnd.y,
-          radius: 7,
+          radius: handleRadius,
           fill: '#ffffff',
           stroke: '#ff5722',
           strokeWidth: 2,
+          strokeScaleEnabled: false,
           draggable: true,
         });
 
@@ -587,7 +615,7 @@
           const pos = refAnchorStart.position();
           refLine.points([pos.x, pos.y, refAnchorEnd.x(), refAnchorEnd.y()]);
           const mx = (pos.x + refAnchorEnd.x()) / 2;
-          const my = (pos.y + refAnchorEnd.y()) / 2 - 12;
+          const my = (pos.y + refAnchorEnd.y()) / 2 - labelLift;
           refLabel.position({ x: mx, y: my });
           updateLoupeFromAnchor(refAnchorStart);
           mainLayerRef.batchDraw();
@@ -607,7 +635,7 @@
           const pos = refAnchorEnd.position();
           refLine.points([refAnchorStart.x(), refAnchorStart.y(), pos.x, pos.y]);
           const mx = (refAnchorStart.x() + pos.x) / 2;
-          const my = (refAnchorStart.y() + pos.y) / 2 - 12;
+          const my = (refAnchorStart.y() + pos.y) / 2 - labelLift;
           refLabel.position({ x: mx, y: my });
           updateLoupeFromAnchor(refAnchorEnd);
           mainLayerRef.batchDraw();
@@ -632,6 +660,7 @@
           points: flatPoints,
           stroke: '#ff5722',
           strokeWidth: 2.5,
+          strokeScaleEnabled: false,
           dash: [5, 3],
           closed: planePoints.length === 4,
           lineCap: 'round',
@@ -660,6 +689,7 @@
                 points: [pStart.x, pStart.y, pEnd.x, pEnd.y],
                 stroke: 'rgba(255, 87, 34, 0.25)',
                 strokeWidth: 1.5,
+                strokeScaleEnabled: false,
               });
               mainLayerRef.add(gridLineH);
 
@@ -672,6 +702,7 @@
                 points: [pVStart.x, pVStart.y, pVEnd.x, pVEnd.y],
                 stroke: 'rgba(255, 87, 34, 0.25)',
                 strokeWidth: 1.5,
+                strokeScaleEnabled: false,
               });
               mainLayerRef.add(gridLineV);
             }
@@ -686,10 +717,11 @@
             name: `reference-anchor-plane-${index}`,
             x: pt.x,
             y: pt.y,
-            radius: 7,
+            radius: handleRadius,
             fill: '#ffffff',
             stroke: '#ff5722',
             strokeWidth: 2,
+            strokeScaleEnabled: false,
             draggable: planePoints.length === 4,
           });
 
@@ -736,18 +768,19 @@
         points: [m.start.x, m.start.y, m.end.x, m.end.y],
         stroke: isSelected ? '#f59e0b' : '#3b82f6',
         strokeWidth: isSelected ? 3 : 2,
+        strokeScaleEnabled: false,
         lineCap: 'round',
       });
 
       const midX = (m.start.x + m.end.x) / 2;
-      const midY = (m.start.y + m.end.y) / 2 - 12;
+      const midY = (m.start.y + m.end.y) / 2 - labelLift;
 
       const label = new Konva.Text({
         name: `measurement-${m.id}-label`,
         text: `${m.realLength.toFixed(2)} ${m.unit}`,
         x: midX,
         y: midY,
-        fontSize: 13,
+        fontSize: labelFont,
         fill: isSelected ? '#f59e0b' : '#3b82f6',
         fontStyle: isSelected ? 'bold' : 'normal',
         align: 'center',
@@ -770,10 +803,11 @@
           name: `measurement-anchor-start-${m.id}`,
           x: m.start.x,
           y: m.start.y,
-          radius: 7,
+          radius: handleRadius,
           fill: '#ffffff',
           stroke: '#f59e0b',
           strokeWidth: 2,
+          strokeScaleEnabled: false,
           draggable: true,
         });
 
@@ -781,10 +815,11 @@
           name: `measurement-anchor-end-${m.id}`,
           x: m.end.x,
           y: m.end.y,
-          radius: 7,
+          radius: handleRadius,
           fill: '#ffffff',
           stroke: '#f59e0b',
           strokeWidth: 2,
+          strokeScaleEnabled: false,
           draggable: true,
         });
 
@@ -796,7 +831,7 @@
           const pos = anchorStart.position();
           line.points([pos.x, pos.y, anchorEnd.x(), anchorEnd.y()]);
           const mx = (pos.x + anchorEnd.x()) / 2;
-          const my = (pos.y + anchorEnd.y()) / 2 - 12;
+          const my = (pos.y + anchorEnd.y()) / 2 - labelLift;
           label.position({ x: mx, y: my });
           const dist = Math.hypot(anchorEnd.x() - pos.x, anchorEnd.y() - pos.y);
           const len = dist * calibration!.scale;
@@ -823,7 +858,7 @@
           const pos = anchorEnd.position();
           line.points([anchorStart.x(), anchorStart.y(), pos.x, pos.y]);
           const mx = (anchorStart.x() + pos.x) / 2;
-          const my = (anchorStart.y() + pos.y) / 2 - 12;
+          const my = (anchorStart.y() + pos.y) / 2 - labelLift;
           label.position({ x: mx, y: my });
           const dist = Math.hypot(pos.x - anchorStart.x(), pos.y - anchorStart.y());
           const len = dist * calibration!.scale;
@@ -924,33 +959,24 @@
 
     const img = new Image();
     img.onload = () => {
-      const maxW = canvasWidth;
-      const maxH = canvasHeight;
-      const s = Math.min(maxW / img.width, maxH / img.height, 1);
+      const naturalW = img.naturalWidth || img.width;
+      const naturalH = img.naturalHeight || img.height;
 
-      const dispW = img.width * s;
-      const dispH = img.height * s;
-      const x = (maxW - dispW) / 2;
-      const y = (maxH - dispH) / 2;
-
-      imageX = x;
-      imageY = y;
-      imageWidth = dispW;
-      imageHeight = dispH;
+      imageX = 0;
+      imageY = 0;
+      imageWidth = naturalW;
+      imageHeight = naturalH;
 
       const konvaImage = new Konva.Image({
         image: img,
-        x,
-        y,
-        width: img.width,
-        height: img.height,
-        scaleX: s,
-        scaleY: s,
+        x: 0,
+        y: 0,
+        width: naturalW,
+        height: naturalH,
       });
       mainLayerRef.add(konvaImage);
       currentKonvaImage = konvaImage;
-      
-      redrawMeasurements(); // Triggers drawing ref line if it existed
+      fitImageToCanvas();
 
       // E2E test marker so specs can assert the background image was rendered
       const kContainer = document.querySelector('[data-testid="konva-container"]');

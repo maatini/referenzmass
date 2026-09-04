@@ -22,7 +22,8 @@
       "dev": "pnpm tauri dev",
       "build": "pnpm tauri build",
       "test:frontend": "pnpm test",
-      "test:backend": "cd src-tauri && cargo test"
+      "test:backend": "pnpm test:rust",
+      "check:all": "pnpm check:all"
     }
   }
 }

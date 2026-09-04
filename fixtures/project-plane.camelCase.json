@@ -1,0 +1,20 @@
+{
+  "imagePath": "/photos/floorplan.jpg",
+  "calibration": {
+    "calibType": "plane",
+    "scale": 0.015,
+    "unit": "m",
+    "homography": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    "referenceStart": null,
+    "referenceEnd": null,
+    "planePoints": [
+      { "x": 10, "y": 10 },
+      { "x": 210, "y": 20 },
+      { "x": 200, "y": 220 },
+      { "x": 20, "y": 200 }
+    ],
+    "realWidth": 4,
+    "realHeight": 3
+  },
+  "measurements": []
+}

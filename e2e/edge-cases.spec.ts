@@ -45,38 +45,38 @@ test.describe('ReferenzMaß – Edge cases and error handling', () => {
 
     // Draw a reference line first
     await drawLine(canvas, page, 150, 200, 650, 200);
-    await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
+    await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
 
     // Set length to 0
     await page.getByRole('spinbutton').fill('0');
     await page.waitForTimeout(200);
 
     // Scale display should disappear (calibration invalidated)
-    await expect(page.getByText(/Scale:/)).not.toBeVisible();
+    await expect(page.getByText(/Maßstab:/)).not.toBeVisible();
   });
 
-  // ── "Clear line" button ──────────────────────────────────────
+  // ── "Linie löschen" button ──────────────────────────────────────
 
-  test('"Clear line" resets calibration state completely', async ({ page }) => {
+  test('"Linie löschen" resets calibration state completely', async ({ page }) => {
     const canvas = page.getByTestId('konva-container');
 
     // Draw reference line
     await drawLine(canvas, page, 150, 200, 650, 200);
-    await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
+    await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
 
     // Click clear
-    const clearBtn = page.getByRole('button', { name: 'Clear line' });
+    const clearBtn = page.getByRole('button', { name: 'Linie löschen' });
     await clearBtn.click();
     await page.waitForTimeout(200);
 
     // State should be reset
     await expect(page.getByText('Keine Referenzlinie')).toBeVisible();
-    await expect(page.getByText(/Scale:/)).not.toBeVisible();
+    await expect(page.getByText(/Maßstab:/)).not.toBeVisible();
   });
 
-  // ── "Clear plane" button ────────────────────────────────────
+  // ── "Fläche löschen" button ────────────────────────────────────
 
-  test('"Clear plane" resets plane calibration', async ({ page }) => {
+  test('"Fläche löschen" resets plane calibration', async ({ page }) => {
     const canvas = page.getByTestId('konva-container');
     const toolbar = page.getByTestId('persistence-tools');
 
@@ -92,10 +92,10 @@ test.describe('ReferenzMaß – Edge cases and error handling', () => {
     await clickCanvas(canvas, page, 200, 200);
     await clickCanvas(canvas, page, 100, 200);
 
-    await expect(page.getByText('✓ Reference plane calibrated')).toBeVisible();
+    await expect(page.getByText('✓ Referenzfläche kalibriert')).toBeVisible();
 
     // Click clear
-    await page.getByRole('button', { name: 'Clear plane' }).click();
+    await page.getByRole('button', { name: 'Fläche löschen' }).click();
     await page.waitForTimeout(200);
 
     await expect(page.getByText('Keine Referenzfläche (0/4)')).toBeVisible();
@@ -103,19 +103,19 @@ test.describe('ReferenzMaß – Edge cases and error handling', () => {
 
   // ── Measurement mode without calibration ────────────────────
 
-  test('"Add Measurement Line" is NOT visible without calibration', async ({ page }) => {
+  test('"Messung hinzufügen" is NOT visible without calibration', async ({ page }) => {
     // No calibration exists
-    await expect(page.getByRole('button', { name: /Add Measurement Line/ })).not.toBeVisible();
+    await expect(page.getByRole('button', { name: /Messung hinzufügen/ })).not.toBeVisible();
   });
 
   // ── Export button visibility ─────────────────────────────────
 
-  test('"Export CSV" button only appears when measurements exist', async ({ page }) => {
+  test('"CSV exportieren" button only appears when measurements exist', async ({ page }) => {
     // No measurements → no export button
-    await expect(page.getByRole('button', { name: 'Export CSV' })).not.toBeVisible();
+    await expect(page.getByRole('button', { name: 'CSV exportieren' })).not.toBeVisible();
   });
 
-  test('"Export CSV" button appears after adding measurements', async ({ page }) => {
+  test('"CSV exportieren" button appears after adding measurements', async ({ page }) => {
     const canvas = page.getByTestId('konva-container');
     const toolbar = page.getByTestId('persistence-tools');
 
@@ -126,18 +126,18 @@ test.describe('ReferenzMaß – Edge cases and error handling', () => {
     await page.getByRole('spinbutton').fill('10');
     await page.getByLabel('Einheit').selectOption('cm');
 
-    await page.getByRole('button', { name: /Add Measurement Line/ }).click();
+    await page.getByRole('button', { name: /Messung hinzufügen/ }).click();
     await page.waitForTimeout(200);
 
     // No measurements yet → no export button
-    await expect(page.getByRole('button', { name: 'Export CSV' })).not.toBeVisible();
+    await expect(page.getByRole('button', { name: 'CSV exportieren' })).not.toBeVisible();
 
     // Draw a measurement
     await drawLine(canvas, page, 150, 300, 400, 300);
     await page.waitForTimeout(200);
 
     // Now export button should be visible
-    await expect(page.getByRole('button', { name: 'Export CSV' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'CSV exportieren' })).toBeVisible();
   });
 
   // ── Keyboard delete without selection ───────────────────────
@@ -153,7 +153,7 @@ test.describe('ReferenzMaß – Edge cases and error handling', () => {
     await page.getByRole('spinbutton').fill('10');
     await page.getByLabel('Einheit').selectOption('cm');
 
-    await page.getByRole('button', { name: /Add Measurement Line/ }).click();
+    await page.getByRole('button', { name: /Messung hinzufügen/ }).click();
     await page.waitForTimeout(200);
 
     // Draw a measurement

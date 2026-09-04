@@ -26,16 +26,16 @@ test.describe('ReferenzMaß – Measurements workflow & lifecycle', () => {
 
     // Draw reference line (500px wide: from x=100 to x=600 at y=200)
     await drawLine(canvas, page, 100, 200, 600, 200);
-    await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
+    await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
 
     // Set reference to 10 cm (0.02 cm/px)
     await page.getByRole('spinbutton').fill('10');
     await page.getByLabel('Einheit').selectOption('cm');
 
     // 2. Switch to measurement mode
-    const addBtn = page.getByRole('button', { name: /Add Measurement Line/ });
+    const addBtn = page.getByRole('button', { name: /Messung hinzufügen/ });
     await addBtn.click();
-    await expect(page.getByRole('button', { name: /Finish adding measurements/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Messungen abschließen/ })).toBeVisible();
     await page.waitForTimeout(300); // Wait for mode switch and UI stability
 
     // 3. Draw first measurement line (250px wide -> 5.00 cm)

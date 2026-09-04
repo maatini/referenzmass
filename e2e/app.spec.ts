@@ -31,10 +31,10 @@ test.describe('ReferenzMaß – basic UI and calibration workflow', () => {
     await expect(page.getByTestId('konva-container')).toBeVisible();
 
     const toolbar = page.getByTestId('persistence-tools');
-    await expect(toolbar.getByRole('button', { name: 'Load Image' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'Bild laden', exact: true })).toBeVisible();
     await expect(toolbar.getByRole('button', { name: 'Testbild laden' })).toBeVisible();
-    await expect(toolbar.getByRole('button', { name: 'Save Project' })).toBeVisible();
-    await expect(toolbar.getByRole('button', { name: 'Load Project' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'Projekt speichern' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'Projekt laden' })).toBeVisible();
 
     // Empty state in sidebar
     await expect(page.getByText('Zeichne zuerst die Referenzlinie, um Messungen durchzuführen.')).toBeVisible();
@@ -45,9 +45,9 @@ test.describe('ReferenzMaß – basic UI and calibration workflow', () => {
 
     await drawLine(canvas, page, 150, 200, 650, 200);
 
-    await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Clear line' })).toBeVisible();
-    await expect(page.getByText(/Scale:/)).toBeVisible({ timeout: 2000 });
+    await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Linie löschen' })).toBeVisible();
+    await expect(page.getByText(/Maßstab:/)).toBeVisible({ timeout: 2000 });
   });
 
   test('shows calibration hint after reference line is drawn', async ({ page }) => {
@@ -65,45 +65,45 @@ test.describe('ReferenzMaß – basic UI and calibration workflow', () => {
     const canvas = page.getByTestId('konva-container');
 
     await drawLine(canvas, page, 150, 200, 650, 200);
-    await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
+    await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
 
     await page.getByRole('spinbutton').fill('50');
     await page.getByLabel('Einheit').selectOption('mm');
 
-    await expect(page.getByText(/Scale:/)).toBeVisible();
+    await expect(page.getByText(/Maßstab:/)).toBeVisible();
   });
 
   test('can enter measurement mode after calibration', async ({ page }) => {
     const canvas = page.getByTestId('konva-container');
 
     await drawLine(canvas, page, 150, 200, 650, 200);
-    await expect(page.getByText(/Scale:/)).toBeVisible();
+    await expect(page.getByText(/Maßstab:/)).toBeVisible();
 
-    const addBtn = page.getByRole('button', { name: /Add Measurement Line/ });
+    const addBtn = page.getByRole('button', { name: /Messung hinzufügen/ });
     await expect(addBtn).toBeVisible();
     await addBtn.click();
-    await expect(page.getByRole('button', { name: /Finish adding measurements/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Messungen abschließen/ })).toBeVisible();
   });
 
   test('can toggle into measurement mode and see measurement tools', async ({ page }) => {
     const canvas = page.getByTestId('konva-container');
 
     await drawLine(canvas, page, 150, 200, 650, 200);
-    await expect(page.getByText(/Scale:/)).toBeVisible();
+    await expect(page.getByText(/Maßstab:/)).toBeVisible();
 
-    const addBtn = page.getByRole('button', { name: /Add Measurement Line/ });
+    const addBtn = page.getByRole('button', { name: /Messung hinzufügen/ });
     await addBtn.click();
-    await expect(page.getByRole('button', { name: /Finish adding measurements/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Messungen abschließen/ })).toBeVisible();
     await expect(page.locator('.measurement-tools')).toBeVisible();
   });
 
-  test('Load Image / Save / Load Project buttons are always present', async ({ page }) => {
+  test('Bild laden / Save / Projekt laden buttons are always present', async ({ page }) => {
     const toolbar = page.getByTestId('persistence-tools');
 
-    await expect(toolbar.getByRole('button', { name: 'Load Image' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'Bild laden', exact: true })).toBeVisible();
     await expect(toolbar.getByRole('button', { name: 'Testbild laden' })).toBeVisible();
-    await expect(toolbar.getByRole('button', { name: 'Save Project' })).toBeVisible();
-    await expect(toolbar.getByRole('button', { name: 'Load Project' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'Projekt speichern' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'Projekt laden' })).toBeVisible();
   });
 
   test('vollständiger Ablauf: Testbild laden → Referenz kalibrieren → Messungen durchführen', async ({ page }) => {
@@ -115,17 +115,17 @@ test.describe('ReferenzMaß – basic UI and calibration workflow', () => {
 
     await drawLine(canvas, page, 110, 205, 610, 205);
 
-    await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
-    await expect(page.getByText(/Scale:/)).toBeVisible({ timeout: 2000 });
+    await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
+    await expect(page.getByText(/Maßstab:/)).toBeVisible({ timeout: 2000 });
 
     await page.getByRole('spinbutton').fill('10');
     await page.getByLabel('Einheit').selectOption('cm');
 
-    const scaleText = await page.getByText(/Scale:/).innerText();
+    const scaleText = await page.getByText(/Maßstab:/).innerText();
     expect(scaleText).toMatch(/0\.0[12]\d+ cm\/px/);
 
-    await page.getByRole('button', { name: /Add Measurement Line/ }).click();
-    await expect(page.getByRole('button', { name: /Finish adding measurements/ })).toBeVisible();
+    await page.getByRole('button', { name: /Messung hinzufügen/ }).click();
+    await expect(page.getByRole('button', { name: /Messungen abschließen/ })).toBeVisible();
     await expect(page.locator('.measurement-tools')).toBeVisible();
   });
 
@@ -150,6 +150,6 @@ test.describe('ReferenzMaß – basic UI and calibration workflow', () => {
     await expect(canvas).toHaveAttribute('data-has-bg-image', 'true');
 
     await drawLine(canvas, page, 280, 320, 580, 380);
-    await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
+    await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
   });
 });

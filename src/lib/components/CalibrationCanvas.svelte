@@ -10,27 +10,28 @@
   import { untrack } from 'svelte';
   import { createCalibration, createPlaneCalibration, type Calibration, type Unit, type CalibrationType } from '../calibration';
   import { computeHomography, projectPoint } from '../homography';
-  import { fitView, screenLengthToImage, type Point } from '../geometry';
+  import { screenLengthToImage, type Point } from '../geometry';
   import {
     createMeasurement,
+    moveMeasurementAnchor,
     recalculateAllMeasurements,
     type Measurement,
   } from '../measurements';
+  import { shouldDeleteMeasurementOnKey } from '../keyboard';
   import type {
     CalibrationState,
     MeasurementState,
   } from '../persistence';
-  import {
-    calibrationToState,
-    measurementsToState,
-    restoreProject,
-    shouldClearLiveCalibration,
-  } from '../persistence';
+  import { shouldClearLiveCalibration } from '../persistence';
   import { getCurrentProjectPath } from '../project';
-  import { convertFileSrc } from '@tauri-apps/api/core';
   import Konva from 'konva';
-  import { createTestCalibrationImage } from '../testImage';
-  
+  import { useCanvasState } from '../composables/useCanvasState.svelte';
+  import { useImageManager } from '../composables/useImageManager.svelte';
+  import {
+    restoreIntoWorkspace,
+    useProjectPersistence,
+  } from '../composables/useProjectPersistence.svelte';
+
   import WorkspaceSidebar from './WorkspaceSidebar.svelte';
   import MagnifierLoupe from './MagnifierLoupe.svelte';
 
@@ -71,43 +72,19 @@
   // === Module 4: Measurements ===
   let measurements = $state<Measurement[]>([]);
   let measurementMode = $state(false);
-  let mainLayerRef: any = null; // reference to Konva layer for drawing measurement visuals
-
-  // Module 8: Image handling
-  let currentImagePath = $state<string | null>(null);
-  let currentKonvaImage = $state<Konva.Image | null>(null);
-
-  // Module 10: Measurement selection
+  let mainLayerRef: Konva.Layer | null = null;
   let selectedMeasurementId = $state<string | null>(null);
-
-  // Module 6: Persistence UI state
-  let saveStatus = $state<string | null>(null);
-
-  // Zoom/pan state tracking
-  let stageScale = $state(1);
-  let stageX = $state(0);
-  let stageY = $state(0);
-  let stageRef: import('konva/lib/Stage').Stage | null = null;
-
-  // Loupe tracking state
-  let loadedImageSrc = $state<string | null>(null);
-  let loupePointerX = $state(0);
-  let loupePointerY = $state(0);
-  let loupeVisible = $state(false);
-  let isDraggingAnchor = false;
-
-  // Image coordinates tracking
-  let imageX = $state(0);
-  let imageY = $state(0);
-  let imageWidth = $state(0);
-  let imageHeight = $state(0);
-
-  // Responsive canvas dimensions (measured from container, fallback to defaults)
-  let canvasWidth = $state(800);
-  let canvasHeight = $state(600);
   let containerEl = $state<HTMLDivElement | null>(null);
 
-  // Keep Konva stage in sync with container size
+  const view = useCanvasState();
+  const persist = useProjectPersistence();
+  const images = useImageManager({
+    getMainLayer: () => mainLayerRef,
+    getCanvasSize: () => ({ width: view.canvasWidth, height: view.canvasHeight }),
+    fitToImage: (size) => view.fitImageToCanvas(size, () => redrawMeasurements()),
+    flashStatus: (message, timeoutMs) => persist.flashStatus(message, timeoutMs),
+  });
+
   $effect(() => {
     const el = containerEl;
     if (!el) return;
@@ -115,14 +92,8 @@
       const rect = entries[0]!.contentRect;
       const w = Math.floor(rect.width);
       const h = Math.floor(rect.height);
-      if (w > 0 && h > 0 && (w !== canvasWidth || h !== canvasHeight)) {
-        canvasWidth = w;
-        canvasHeight = h;
-        if (stageRef) {
-          stageRef.width(w);
-          stageRef.height(h);
-          stageRef.draw();
-        }
+      if (w > 0 && h > 0 && (w !== view.canvasWidth || h !== view.canvasHeight)) {
+        view.resizeStage(w, h);
       }
     });
     observer.observe(el);
@@ -244,169 +215,41 @@
   }
 
   function resetZoomPan() {
-    stageScale = 1;
-    stageX = 0;
-    stageY = 0;
-    if (stageRef) {
-      stageRef.scale({ x: 1, y: 1 });
-      stageRef.position({ x: 0, y: 0 });
-      stageRef.batchDraw();
-    }
-    redrawMeasurements();
+    view.resetZoomPan(() => redrawMeasurements());
   }
 
-  /**
-   * Fits the loaded image to the canvas while preserving aspect ratio.
-   * View-only: image stays in natural pixels; stage scale/position change.
-   */
   function fitImageToCanvas() {
-    if (!stageRef || !currentKonvaImage) return;
-    const img = currentKonvaImage.image() as HTMLImageElement | null;
-    const naturalW = img?.naturalWidth || imageWidth;
-    const naturalH = img?.naturalHeight || imageHeight;
-    if (!naturalW || !naturalH) return;
-    const view = fitView(
-      { width: canvasWidth, height: canvasHeight },
-      { width: naturalW, height: naturalH }
+    const img = images.currentKonvaImage?.image() as HTMLImageElement | null;
+    view.fitImageToCanvas(
+      {
+        width: img?.naturalWidth || images.imageWidth,
+        height: img?.naturalHeight || images.imageHeight,
+      },
+      () => redrawMeasurements()
     );
-    stageScale = view.scale;
-    stageX = view.x;
-    stageY = view.y;
-    stageRef.scale({ x: view.scale, y: view.scale });
-    stageRef.position({ x: view.x, y: view.y });
-    stageRef.batchDraw();
-    redrawMeasurements();
   }
 
-  // === Module 7: Native dialog-based persistence handlers ===
-
-  async function handleSaveProject() {
-    saveStatus = null;
-
-    const calib = getCurrentCalibration();
-    const meas = getMeasurements();
-
-    if (!calib && meas.length === 0) {
-      saveStatus = 'Nothing to save';
-      setTimeout(() => (saveStatus = null), 2000);
-      return;
-    }
-
-    try {
-      const { saveProjectWithDialog } = await import('../project');
-
-      const state = {
-        imagePath: currentImagePath,
-        calibration: calibrationToState(calib, {
-          referenceStart,
-          referenceEnd,
-          planePoints,
-          realWidth: realWorldLength,
-          realHeight: calibrationType === 'plane' ? realWorldHeight : null,
-        }),
-        measurements: measurementsToState(meas),
-      };
-
-      const savedPath = await saveProjectWithDialog(state);
-
-      if (savedPath) {
-        saveStatus = `Saved: ${savedPath.split('/').pop()}`;
-      }
-    } catch (err) {
-      console.error(err);
-      saveStatus = `Save failed: ${err}`;
-    }
-
-    setTimeout(() => (saveStatus = null), 2500);
+  function handleSaveProject() {
+    persist.handleSaveProject(() => ({
+      imagePath: images.currentImagePath,
+      calibration,
+      measurements,
+      referenceStart,
+      referenceEnd,
+      planePoints,
+      realWidth: realWorldLength,
+      realHeight: calibrationType === 'plane' ? realWorldHeight : null,
+    }));
   }
 
-  async function handleLoadProject() {
-    saveStatus = null;
-
-    try {
-      const { loadProjectWithDialog } = await import('../project');
-      const result = await loadProjectWithDialog();
-
-      if (result) {
-        loadProjectState({
-          calibration: result.state.calibration,
-          measurements: result.state.measurements,
-          imagePath: result.state.imagePath,
-        });
-
-        const filename = result.path.split('/').pop() ?? 'project';
-        saveStatus = `Loaded: ${filename}`;
-      }
-    } catch (err) {
-      console.error(err);
-      saveStatus = `Load failed: ${err}`;
-    }
-
-    setTimeout(() => (saveStatus = null), 2500);
+  function handleLoadProject() {
+    persist.handleLoadProject((restored) => {
+      applyRestoredWorkspace(restored);
+    });
   }
 
-  async function handleExportMeasurements() {
-    saveStatus = null;
-
-    const meas = getMeasurements();
-    const calib = getCurrentCalibration();
-
-    if (meas.length === 0) {
-      saveStatus = 'No measurements to export';
-      setTimeout(() => (saveStatus = null), 2000);
-      return;
-    }
-
-    try {
-      const { exportMeasurementsToCSV } = await import('../project');
-      const savedPath = await exportMeasurementsToCSV(meas, calib);
-
-      if (savedPath) {
-        const filename = savedPath.split('/').pop() ?? 'export.csv';
-        saveStatus = `Exported: ${filename}`;
-      }
-    } catch (err) {
-      console.error(err);
-      saveStatus = `Export failed: ${err}`;
-    }
-
-    setTimeout(() => (saveStatus = null), 2500);
-  }
-
-  async function handleLoadImage() {
-    saveStatus = null;
-
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const selected = await open({
-        multiple: false,
-        filters: [
-          { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'bmp'] },
-        ],
-      });
-
-      if (selected && !Array.isArray(selected)) {
-        loadImage(selected);
-        saveStatus = 'Image loaded';
-      }
-    } catch (err) {
-      console.error(err);
-      saveStatus = `Failed to load image: ${err}`;
-    }
-
-    setTimeout(() => (saveStatus = null), 2000);
-  }
-
-  /**
-   * Loads the built-in deterministic test image (useful for demos and E2E tests).
-   * Shows a ruler-like pattern with a 10 cm reference bar.
-   */
-  function loadTestImage() {
-    const dataUrl = createTestCalibrationImage(canvasWidth, canvasHeight);
-    loadImage(dataUrl);
-    currentImagePath = null;
-    saveStatus = 'Testbild geladen';
-    setTimeout(() => (saveStatus = null), 1500);
+  function handleExportMeasurements() {
+    persist.handleExportMeasurements(measurements, calibration);
   }
 
   // Public API for parent / tests
@@ -428,54 +271,18 @@
     return selectedMeasurementId;
   }
 
-  /**
-   * Loads an image into the canvas.
-   * Accepts either a real filesystem path (uses convertFileSrc for Tauri)
-   * or a browser-fetchable source: data URL, http(s) URL, or root-relative path (for E2E tests).
-   */
   export function loadImage(pathOrDataUrl: string) {
-    const looksLikeWebSrc =
-      pathOrDataUrl.startsWith('data:') ||
-      pathOrDataUrl.startsWith('http://') ||
-      pathOrDataUrl.startsWith('https://') ||
-      pathOrDataUrl.startsWith('blob:');
-
-    if (looksLikeWebSrc) {
-      currentImagePath = null;
-      loadImageIntoLayer(pathOrDataUrl);
-      return;
-    }
-
-    // Everything else (absolute filesystem paths from the native dialog, or project files)
-    // must go through convertFileSrc so the WebView can actually load them.
-    currentImagePath = pathOrDataUrl;
-    const safeSrc = convertFileSrc(pathOrDataUrl);
-    loadImageIntoLayer(safeSrc);
+    images.loadImage(pathOrDataUrl);
   }
 
-  // E2E test support: expose loadImage so Playwright can inject real images (e.g. pforte-fuersthof.jpg)
   if (typeof window !== 'undefined') {
     (window as any).__e2e = (window as any).__e2e || {};
     (window as any).__e2e.loadImage = loadImage;
   }
 
-  /**
-   * Loads a project state (calibration + measurements + optional image) into the component.
-   */
-  export function loadProjectState(data: {
-    calibration?: CalibrationState | null;
-    measurements?: MeasurementState[];
-    imagePath?: string | null;
-  }) {
+  function applyRestoredWorkspace(restored: ReturnType<typeof restoreIntoWorkspace>) {
     measurementMode = false;
     selectedMeasurementId = null;
-
-    const restored = restoreProject({
-      imagePath: data.imagePath ?? null,
-      calibration: data.calibration ?? null,
-      measurements: data.measurements ?? [],
-    });
-
     calibrationType = restored.calibrationType;
     referenceStart = restored.referenceStart;
     referenceEnd = restored.referenceEnd;
@@ -489,63 +296,40 @@
     if (restored.unit) {
       unit = restored.unit;
     }
-
     calibration = restored.calibration;
-
-    if (restored.calibration && restored.measurements.length > 0) {
-      measurements = restored.measurements;
-    } else {
-      measurements = [];
-    }
-
+    measurements = restored.measurements;
     redrawMeasurements();
 
-    // Module 8: Load image if provided
-    if (data.imagePath) {
+    if (restored.imagePath) {
       try {
-        loadImage(data.imagePath);
+        images.loadImage(restored.imagePath);
       } catch (e) {
         console.warn('Failed to load project image:', e);
-        currentImagePath = data.imagePath; // Still remember the path
+        images.rememberPath(restored.imagePath);
       }
     }
   }
 
-  function handleStageTransform(scale: number, x: number, y: number) {
-    stageScale = scale;
-    stageX = x;
-    stageY = y;
-  }
-
-  function handleDrawingPointerMove(pos: { x: number; y: number } | null) {
-    if (isDraggingAnchor) return; // Anchor dragging handles its own loupe state
-    if (pos) {
-      loupePointerX = pos.x;
-      loupePointerY = pos.y;
-      loupeVisible = true;
-    } else {
-      loupeVisible = false;
-    }
-  }
-
-  function updateLoupeFromAnchor(anchor: Konva.Circle) {
-    const pos = anchor.position();
-    loupePointerX = pos.x * stageScale + stageX;
-    loupePointerY = pos.y * stageScale + stageY;
-    loupeVisible = true;
+  export function loadProjectState(data: {
+    calibration?: CalibrationState | null;
+    measurements?: MeasurementState[];
+    imagePath?: string | null;
+  }) {
+    applyRestoredWorkspace(restoreIntoWorkspace(data));
   }
 
   // Draw or update all measurement lines + labels on the Konva layer
   function redrawMeasurements() {
-    if (!mainLayerRef) return;
+    const layer = mainLayerRef;
+    if (!layer) return;
 
-    const viewPx = (screen: number) => screenLengthToImage(screen, stageScale || 1);
+    const viewPx = (screen: number) => screenLengthToImage(screen, view.stageScale || 1);
     const handleRadius = viewPx(7);
     const labelFont = viewPx(13);
     const labelLift = viewPx(12);
 
     // Remove previous visual nodes
-    const childrenToRemove = mainLayerRef.getChildren((node: any) =>
+    const childrenToRemove = layer.getChildren((node: any) =>
       node.name && (
         node.name().startsWith('measurement-') ||
         node.name().startsWith('reference-')
@@ -565,7 +349,7 @@
           dash: [6, 4],
           lineCap: 'round',
         });
-        mainLayerRef.add(refLine);
+        layer.add(refLine);
 
         const midX = (referenceStart.x + referenceEnd.x) / 2;
         const midY = (referenceStart.y + referenceEnd.y) / 2 - labelLift;
@@ -579,7 +363,7 @@
           fill: '#ff5722',
           align: 'center',
         });
-        mainLayerRef.add(refLabel);
+        layer.add(refLabel);
 
         // Create draggable endpoint anchors
         const refAnchorStart = new Konva.Circle({
@@ -608,8 +392,8 @@
 
         // Bind drag events
         refAnchorStart.on('dragstart', () => {
-          isDraggingAnchor = true;
-          updateLoupeFromAnchor(refAnchorStart);
+          view.isDraggingAnchor = true;
+          view.updateLoupeFromAnchor(refAnchorStart);
         });
         refAnchorStart.on('dragmove', () => {
           const pos = refAnchorStart.position();
@@ -617,19 +401,19 @@
           const mx = (pos.x + refAnchorEnd.x()) / 2;
           const my = (pos.y + refAnchorEnd.y()) / 2 - labelLift;
           refLabel.position({ x: mx, y: my });
-          updateLoupeFromAnchor(refAnchorStart);
-          mainLayerRef.batchDraw();
+          view.updateLoupeFromAnchor(refAnchorStart);
+          layer.batchDraw();
         });
         refAnchorStart.on('dragend', () => {
           const pos = refAnchorStart.position();
           referenceStart = { x: pos.x, y: pos.y };
-          isDraggingAnchor = false;
-          loupeVisible = false;
+          view.isDraggingAnchor = false;
+          view.loupeVisible = false;
         });
 
         refAnchorEnd.on('dragstart', () => {
-          isDraggingAnchor = true;
-          updateLoupeFromAnchor(refAnchorEnd);
+          view.isDraggingAnchor = true;
+          view.updateLoupeFromAnchor(refAnchorEnd);
         });
         refAnchorEnd.on('dragmove', () => {
           const pos = refAnchorEnd.position();
@@ -637,18 +421,18 @@
           const mx = (refAnchorStart.x() + pos.x) / 2;
           const my = (refAnchorStart.y() + pos.y) / 2 - labelLift;
           refLabel.position({ x: mx, y: my });
-          updateLoupeFromAnchor(refAnchorEnd);
-          mainLayerRef.batchDraw();
+          view.updateLoupeFromAnchor(refAnchorEnd);
+          layer.batchDraw();
         });
         refAnchorEnd.on('dragend', () => {
           const pos = refAnchorEnd.position();
           referenceEnd = { x: pos.x, y: pos.y };
-          isDraggingAnchor = false;
-          loupeVisible = false;
+          view.isDraggingAnchor = false;
+          view.loupeVisible = false;
         });
 
-        mainLayerRef.add(refAnchorStart);
-        mainLayerRef.add(refAnchorEnd);
+        layer.add(refAnchorStart);
+        layer.add(refAnchorEnd);
       }
     } else {
       // plane mode
@@ -665,7 +449,7 @@
           closed: planePoints.length === 4,
           lineCap: 'round',
         });
-        mainLayerRef.add(refPolygon);
+        layer.add(refPolygon);
 
         // Draw grid overlay if calibrated
         if (planePoints.length === 4 && calibration && calibration.type === 'plane') {
@@ -691,7 +475,7 @@
                 strokeWidth: 1.5,
                 strokeScaleEnabled: false,
               });
-              mainLayerRef.add(gridLineH);
+              layer.add(gridLineH);
 
               // Vertical grid lines
               const realX = realWorldLength * t;
@@ -704,7 +488,7 @@
                 strokeWidth: 1.5,
                 strokeScaleEnabled: false,
               });
-              mainLayerRef.add(gridLineV);
+              layer.add(gridLineV);
             }
           } catch (e) {
             console.error('Failed to draw perspective grid:', e);
@@ -727,8 +511,8 @@
 
           if (planePoints.length === 4) {
             anchor.on('dragstart', () => {
-              isDraggingAnchor = true;
-              updateLoupeFromAnchor(anchor);
+              view.isDraggingAnchor = true;
+              view.updateLoupeFromAnchor(anchor);
             });
             anchor.on('dragmove', () => {
               const pos = anchor.position();
@@ -736,26 +520,26 @@
               const updatedPoints = [...planePoints];
               updatedPoints[index] = { x: pos.x, y: pos.y };
               refPolygon.points(updatedPoints.flatMap(p => [p.x, p.y]));
-              updateLoupeFromAnchor(anchor);
-              mainLayerRef.batchDraw();
+              view.updateLoupeFromAnchor(anchor);
+              layer.batchDraw();
             });
             anchor.on('dragend', () => {
               const pos = anchor.position();
               planePoints[index] = { x: pos.x, y: pos.y };
-              isDraggingAnchor = false;
-              loupeVisible = false;
+              view.isDraggingAnchor = false;
+              view.loupeVisible = false;
               // Recalibrate and redraw
               redrawMeasurements();
             });
           }
 
-          mainLayerRef.add(anchor);
+          layer.add(anchor);
         });
       }
     }
 
     if (!calibration) {
-      mainLayerRef.draw();
+      layer.draw();
       return;
     }
 
@@ -794,8 +578,8 @@
       line.on('click', selectThis);
       label.on('click', selectThis);
 
-      mainLayerRef.add(line);
-      mainLayerRef.add(label);
+      layer.add(line);
+      layer.add(label);
 
       // If selected, add draggable endpoints
       if (isSelected) {
@@ -824,65 +608,67 @@
         });
 
         anchorStart.on('dragstart', () => {
-          isDraggingAnchor = true;
-          updateLoupeFromAnchor(anchorStart);
+          view.isDraggingAnchor = true;
+          view.updateLoupeFromAnchor(anchorStart);
         });
         anchorStart.on('dragmove', () => {
           const pos = anchorStart.position();
-          line.points([pos.x, pos.y, anchorEnd.x(), anchorEnd.y()]);
-          const mx = (pos.x + anchorEnd.x()) / 2;
-          const my = (pos.y + anchorEnd.y()) / 2 - labelLift;
+          const start = { x: pos.x, y: pos.y };
+          const end = { x: anchorEnd.x(), y: anchorEnd.y() };
+          line.points([start.x, start.y, end.x, end.y]);
+          const mx = (start.x + end.x) / 2;
+          const my = (start.y + end.y) / 2 - labelLift;
           label.position({ x: mx, y: my });
-          const dist = Math.hypot(anchorEnd.x() - pos.x, anchorEnd.y() - pos.y);
-          const len = dist * calibration!.scale;
-          label.text(`${len.toFixed(2)} ${calibration!.unit}`);
-          updateLoupeFromAnchor(anchorStart);
-          mainLayerRef.batchDraw();
+          const preview = moveMeasurementAnchor(m, calibration!, 'start', start);
+          label.text(`${preview.realLength.toFixed(2)} ${preview.unit}`);
+          view.updateLoupeFromAnchor(anchorStart);
+          layer.batchDraw();
         });
         anchorStart.on('dragend', () => {
           const pos = anchorStart.position();
-          measurements = measurements.map(item => item.id === m.id ? {
-            ...item,
-            start: { x: pos.x, y: pos.y },
-            realLength: Math.hypot(anchorEnd.x() - pos.x, anchorEnd.y() - pos.y) * calibration!.scale
-          } : item);
-          isDraggingAnchor = false;
-          loupeVisible = false;
+          measurements = measurements.map(item =>
+            item.id === m.id
+              ? moveMeasurementAnchor(item, calibration!, 'start', { x: pos.x, y: pos.y })
+              : item
+          );
+          view.isDraggingAnchor = false;
+          view.loupeVisible = false;
         });
 
         anchorEnd.on('dragstart', () => {
-          isDraggingAnchor = true;
-          updateLoupeFromAnchor(anchorEnd);
+          view.isDraggingAnchor = true;
+          view.updateLoupeFromAnchor(anchorEnd);
         });
         anchorEnd.on('dragmove', () => {
           const pos = anchorEnd.position();
-          line.points([anchorStart.x(), anchorStart.y(), pos.x, pos.y]);
-          const mx = (anchorStart.x() + pos.x) / 2;
-          const my = (anchorStart.y() + pos.y) / 2 - labelLift;
+          const start = { x: anchorStart.x(), y: anchorStart.y() };
+          const end = { x: pos.x, y: pos.y };
+          line.points([start.x, start.y, end.x, end.y]);
+          const mx = (start.x + end.x) / 2;
+          const my = (start.y + end.y) / 2 - labelLift;
           label.position({ x: mx, y: my });
-          const dist = Math.hypot(pos.x - anchorStart.x(), pos.y - anchorStart.y());
-          const len = dist * calibration!.scale;
-          label.text(`${len.toFixed(2)} ${calibration!.unit}`);
-          updateLoupeFromAnchor(anchorEnd);
-          mainLayerRef.batchDraw();
+          const preview = moveMeasurementAnchor(m, calibration!, 'end', end);
+          label.text(`${preview.realLength.toFixed(2)} ${preview.unit}`);
+          view.updateLoupeFromAnchor(anchorEnd);
+          layer.batchDraw();
         });
         anchorEnd.on('dragend', () => {
           const pos = anchorEnd.position();
-          measurements = measurements.map(item => item.id === m.id ? {
-            ...item,
-            end: { x: pos.x, y: pos.y },
-            realLength: Math.hypot(pos.x - anchorStart.x(), pos.y - anchorStart.y()) * calibration!.scale
-          } : item);
-          isDraggingAnchor = false;
-          loupeVisible = false;
+          measurements = measurements.map(item =>
+            item.id === m.id
+              ? moveMeasurementAnchor(item, calibration!, 'end', { x: pos.x, y: pos.y })
+              : item
+          );
+          view.isDraggingAnchor = false;
+          view.loupeVisible = false;
         });
 
-        mainLayerRef.add(anchorStart);
-        mainLayerRef.add(anchorEnd);
+        layer.add(anchorStart);
+        layer.add(anchorEnd);
       }
     });
 
-    mainLayerRef.draw();
+    layer.draw();
   }
 
   // When calibration changes, recalculate all existing measurements (reactivity!)
@@ -900,10 +686,9 @@
 
   // Module 10: Keyboard deletion of selected measurement
   function handleKeyDown(e: KeyboardEvent) {
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedMeasurementId) {
-      e.preventDefault();
-      deleteMeasurementById(selectedMeasurementId);
-    }
+    if (!shouldDeleteMeasurementOnKey(e, selectedMeasurementId)) return;
+    e.preventDefault();
+    deleteMeasurementById(selectedMeasurementId!);
   }
 
   // Attach global key listener for deletion
@@ -914,24 +699,15 @@
     };
   });
 
-  // Konva ready handler - load image when stage is ready
   function onKonvaReady(stage: import('konva/lib/Stage').Stage) {
-    stageRef = stage;
-    stageScale = stage.scaleX();
-    stageX = stage.x();
-    stageY = stage.y();
+    view.attachStage(stage);
 
-    // Measure container and update stage to fill available space
     if (containerEl) {
       const rect = containerEl.getBoundingClientRect();
       const w = Math.floor(rect.width);
       const h = Math.floor(rect.height);
       if (w > 0 && h > 0) {
-        canvasWidth = w;
-        canvasHeight = h;
-        stage.width(w);
-        stage.height(h);
-        stage.draw();
+        view.resizeStage(w, h);
       }
     }
 
@@ -939,55 +715,8 @@
     mainLayerRef = mainLayer;
 
     if (imageDataUrl) {
-      loadImageIntoLayer(imageDataUrl);
+      images.loadImageIntoLayer(imageDataUrl);
     }
-  }
-
-  function loadImageIntoLayer(src: string) {
-    if (!mainLayerRef) return;
-    loadedImageSrc = src;
-
-    // Remove previous image if exists
-    if (currentKonvaImage) {
-      currentKonvaImage.destroy();
-      currentKonvaImage = null;
-    }
-
-    // Reset E2E marker when starting a new load
-    const kContainer = document.querySelector('[data-testid="konva-container"]');
-    if (kContainer) kContainer.removeAttribute('data-has-bg-image');
-
-    const img = new Image();
-    img.onload = () => {
-      const naturalW = img.naturalWidth || img.width;
-      const naturalH = img.naturalHeight || img.height;
-
-      imageX = 0;
-      imageY = 0;
-      imageWidth = naturalW;
-      imageHeight = naturalH;
-
-      const konvaImage = new Konva.Image({
-        image: img,
-        x: 0,
-        y: 0,
-        width: naturalW,
-        height: naturalH,
-      });
-      mainLayerRef.add(konvaImage);
-      currentKonvaImage = konvaImage;
-      fitImageToCanvas();
-
-      // E2E test marker so specs can assert the background image was rendered
-      const kContainer = document.querySelector('[data-testid="konva-container"]');
-      if (kContainer) kContainer.setAttribute('data-has-bg-image', 'true');
-    };
-    img.onerror = () => {
-      console.error('Image load failed for src:', src);
-      saveStatus = 'Bild konnte nicht geladen werden (evtl. Berechtigungsproblem)';
-      setTimeout(() => (saveStatus = null), 3500);
-    };
-    img.src = src;
   }
 </script>
 
@@ -1002,14 +731,14 @@
     bind:realWorldHeight
     {planePoints}
     currentProjectName={currentProjectName}
-    currentImagePath={currentImagePath}
-    saveStatus={saveStatus}
+    currentImagePath={images.currentImagePath}
+    saveStatus={persist.saveStatus}
     hasReferenceLine={hasReferenceLine}
     onSaveProject={handleSaveProject}
     onLoadProject={handleLoadProject}
     onExportMeasurements={handleExportMeasurements}
-    onLoadImage={handleLoadImage}
-    onLoadTestImage={loadTestImage}
+    onLoadImage={images.handleLoadImage}
+    onLoadTestImage={images.loadTestImage}
     onClearReferenceLine={clearReferenceLine}
     onSelectMeasurement={(id) => { selectedMeasurementId = id; redrawMeasurements(); }}
     onDeleteMeasurement={deleteMeasurementById}
@@ -1026,11 +755,11 @@
               class:active={measurementMode}
               onclick={toggleMeasurementMode}
             >
-              {measurementMode ? 'Finish adding measurements' : 'Add Measurement Line'}
+              {measurementMode ? 'Messungen abschließen' : 'Messung hinzufügen'}
             </button>
           </div>
         {/if}
-        {#if currentKonvaImage}
+        {#if images.currentKonvaImage}
           <button class="btn-tool btn-tool-reset" onclick={fitImageToCanvas}>
             Bild einpassen
           </button>
@@ -1044,42 +773,42 @@
     <div class="canvas-stage-wrapper" bind:this={containerEl}>
       <div
         use:useKonva={{
-          width: canvasWidth,
-          height: canvasHeight,
+          width: view.canvasWidth,
+          height: view.canvasHeight,
           onReady: onKonvaReady,
           onReferenceLineComplete: handleReferenceLineComplete,
           measurementMode,
           onMeasurementLineComplete: handleMeasurementLineComplete,
-          onStageTransform: handleStageTransform,
-          onDrawingPointerMove: handleDrawingPointerMove,
+          onStageTransform: view.handleStageTransform,
+          onDrawingPointerMove: view.handleDrawingPointerMove,
           calibrationType,
           onPlanePointAdded: handlePlanePointAdded,
         }}
         class="konva-container"
         data-testid="konva-container"
-        style="width: {canvasWidth}px; height: {canvasHeight}px; cursor: {measurementMode ? 'crosshair' : 'default'};"
+        style="width: {view.canvasWidth}px; height: {view.canvasHeight}px; cursor: {measurementMode ? 'crosshair' : 'default'};"
       ></div>
 
       <MagnifierLoupe
-        imageSrc={loadedImageSrc}
-        pointerX={loupePointerX}
-        pointerY={loupePointerY}
-        imageX={imageX}
-        imageY={imageY}
-        imageWidth={imageWidth}
-        imageHeight={imageHeight}
-        stageScale={stageScale}
-        stageX={stageX}
-        stageY={stageY}
-        visible={loupeVisible}
+        imageSrc={images.loadedImageSrc}
+        pointerX={view.loupePointerX}
+        pointerY={view.loupePointerY}
+        imageX={images.imageX}
+        imageY={images.imageY}
+        imageWidth={images.imageWidth}
+        imageHeight={images.imageHeight}
+        stageScale={view.stageScale}
+        stageX={view.stageX}
+        stageY={view.stageY}
+        visible={view.loupeVisible}
       />
     </div>
 
     <div class="canvas-footer-hint">
-      {#if currentKonvaImage}
-        <span class="footer-zoom-info">🔍 {Math.round(stageScale * 100)}%</span>
+      {#if images.currentKonvaImage}
+        <span class="footer-zoom-info">🔍 {Math.round(view.stageScale * 100)}%</span>
         <span class="footer-sep">|</span>
-        <span class="footer-zoom-info">{(currentKonvaImage.image() as HTMLImageElement)?.naturalWidth ?? '?'}×{(currentKonvaImage.image() as HTMLImageElement)?.naturalHeight ?? '?'} px</span>
+        <span class="footer-zoom-info">{(images.currentKonvaImage.image() as HTMLImageElement)?.naturalWidth ?? '?'}×{(images.currentKonvaImage.image() as HTMLImageElement)?.naturalHeight ?? '?'} px</span>
         <span class="footer-sep">|</span>
       {/if}
       <kbd>Leertaste</kbd> gedrückt halten + Ziehen zum Verschieben &bull; Mausrad zum Zoomen

@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { Unit, CalibrationType } from '../calibration';
+  import type { Calibration, Unit, CalibrationType } from '../calibration';
   import type { Measurement } from '../measurements';
   import type { Point } from '../geometry';
 
   interface Props {
     realWorldLength: number;
     unit: Unit;
-    calibration: { scale: number; unit: Unit } | null;
+    calibration: Calibration | null;
     measurements: Measurement[];
     selectedMeasurementId: string | null;
     currentProjectName: string | null;
@@ -74,16 +74,16 @@
       <h3 class="section-title">Projekt & Datei</h3>
       <div class="button-grid" data-testid="persistence-tools">
         <button onclick={onLoadImage} class="btn btn-secondary">
-          Load Image
+          Bild laden
         </button>
         <button onclick={onLoadTestImage} class="btn btn-secondary">
           Testbild laden
         </button>
         <button onclick={onSaveProject} class="btn btn-primary">
-          Save Project
+          Projekt speichern
         </button>
         <button onclick={onLoadProject} class="btn btn-secondary">
-          Load Project
+          Projekt laden
         </button>
       </div>
 
@@ -99,8 +99,8 @@
       <div class="input-group" style="margin-bottom: 8px;">
         <label for="calib-type">Kalibrierungsmodus</label>
         <select id="calib-type" bind:value={calibrationType} class="select-unit" style="width: 100%;">
-          <option value="line">2D Line (Linearer Maßstab)</option>
-          <option value="plane">3D Plane (Flächen-Homographie)</option>
+          <option value="line">2D-Linie (linearer Maßstab)</option>
+          <option value="plane">3D-Ebene (Flächen-Homographie)</option>
         </select>
       </div>
 
@@ -162,10 +162,10 @@
         {#if calibrationType === 'line'}
           {#if hasReferenceLine}
             <div class="state-indicator success">
-              <span class="dot"></span> ✓ Reference line drawn
+              <span class="dot"></span> ✓ Referenzlinie gezeichnet
             </div>
             <button onclick={onClearReferenceLine} class="btn btn-danger btn-xs">
-              Clear line
+              Linie löschen
             </button>
           {:else}
             <div class="state-indicator warning">
@@ -176,10 +176,10 @@
         {:else}
           {#if planePoints.length === 4}
             <div class="state-indicator success">
-              <span class="dot"></span> ✓ Reference plane calibrated
+              <span class="dot"></span> ✓ Referenzfläche kalibriert
             </div>
             <button onclick={onClearReferenceLine} class="btn btn-danger btn-xs">
-              Clear plane
+              Fläche löschen
             </button>
           {:else}
             <div class="state-indicator warning">
@@ -192,9 +192,9 @@
         {#if calibration}
           <div class="scale-display">
             {#if calibration.type === 'plane'}
-              Mode: <strong>3D Plane (Homography)</strong>
+              Modus: <strong>3D-Ebene (Homographie)</strong>
             {:else}
-              Scale: <strong>{calibration.scale.toFixed(4)}</strong> {calibration.unit}/px
+              Maßstab: <strong>{calibration.scale.toFixed(4)}</strong> {calibration.unit}/px
             {/if}
           </div>
         {/if}
@@ -207,7 +207,7 @@
         <h3 class="section-title">Messungen ({measurements.length})</h3>
         {#if measurements.length > 0}
           <button onclick={onExportMeasurements} class="btn btn-success btn-xs">
-            Export CSV
+            CSV exportieren
           </button>
         {/if}
       </div>
@@ -295,6 +295,7 @@
     font-weight: 800;
     margin: 0 0 8px 0;
     background: linear-gradient(135deg, var(--brand-hover), var(--accent));
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: -0.5px;

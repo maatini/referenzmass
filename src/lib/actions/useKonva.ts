@@ -7,7 +7,8 @@
  */
 
 import Konva from 'konva';
-import type { Stage, Layer } from 'konva/lib/Stage';
+import type { Layer } from 'konva/lib/Layer';
+import type { Stage } from 'konva/lib/Stage';
 import { screenLengthToImage } from '../geometry';
 
 export interface UseKonvaConfig {
@@ -46,7 +47,7 @@ export interface UseKonvaReturn {
   destroy: () => void;
 }
 
-export function useKonva(node: HTMLElement, config: UseKonvaConfig) {
+export function useKonva(node: HTMLDivElement, config: UseKonvaConfig) {
   const stage = new Konva.Stage({
     container: node,
     width: config.width,

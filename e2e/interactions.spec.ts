@@ -19,7 +19,7 @@ async function setupCalibratedTestImage(page: Page) {
 
   // Draw reference line (500px) at 10 cm
   await drawLine(canvas, page, 100, 200, 600, 200);
-  await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
+  await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
   await page.getByRole('spinbutton').fill('10');
   await page.getByLabel('Einheit').selectOption('cm');
   await page.waitForTimeout(200);
@@ -89,7 +89,7 @@ test.describe('ReferenzMaß – Canvas interactions (zoom, pan, anchor drag)', (
 
     // Canvas and calibration should still be present
     await expect(canvas).toBeVisible();
-    await expect(page.getByText(/Scale:/)).toBeVisible();
+    await expect(page.getByText(/Maßstab:/)).toBeVisible();
   });
 
   test('reference line anchor drag updates calibration reactively', async ({ page }) => {
@@ -100,7 +100,7 @@ test.describe('ReferenzMaß – Canvas interactions (zoom, pan, anchor drag)', (
     await page.getByRole('spinbutton').fill('20');
     await page.waitForTimeout(300);
 
-    const scaleText = await page.getByText(/Scale:/).innerText();
+    const scaleText = await page.getByText(/Maßstab:/).innerText();
     expect(scaleText).toMatch(/0\.0[34]\d+ cm\/px/);
   });
 
@@ -108,7 +108,7 @@ test.describe('ReferenzMaß – Canvas interactions (zoom, pan, anchor drag)', (
     const canvas = await setupCalibratedTestImage(page);
 
     // Enter measurement mode
-    const addBtn = page.getByRole('button', { name: /Add Measurement Line/ });
+    const addBtn = page.getByRole('button', { name: /Messung hinzufügen/ });
     await addBtn.click();
     await page.waitForTimeout(300);
 
@@ -137,6 +137,6 @@ test.describe('ReferenzMaß – Canvas interactions (zoom, pan, anchor drag)', (
 
     // Should be able to draw a regular reference line
     await drawLine(canvas, page, 100, 200, 600, 200);
-    await expect(page.getByText('✓ Reference line drawn')).toBeVisible();
+    await expect(page.getByText('✓ Referenzlinie gezeichnet')).toBeVisible();
   });
 });

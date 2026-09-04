@@ -34,14 +34,14 @@ Ohne Devbox: [Tauri-Prerequisites](https://v2.tauri.app/start/prerequisites/) + 
 | `pnpm tauri dev` | Native App + Vite auf Port 1420 |
 | `pnpm test` | Vitest, einmalig (`vitest run`) |
 | `pnpm test:watch` | Vitest Watch |
-| `pnpm check` | `svelte-kit sync` + `svelte-check` (derzeit 4 vorbestehende Fehler) |
+| `pnpm check` | `svelte-kit sync` + `svelte-check` |
 | `pnpm test:rust` | `cargo test` in `src-tauri` |
 | `pnpm check:all` | check + Vitest + Rust |
 | `pnpm test:e2e` | Playwright gegen Vite (kein natives Tauri) |
 
 ## Bekannte Lücken (P0)
 
-Serde-camelCase, Restore der Referenzgeometrie und Originalpixel-Koordinaten sind erledigt. Offen: Messungs-Drag nutzt noch `dist * calibration.scale` statt `measure()` (Plane falsch); Delete/Backspace löscht Messungen auch in Inputs. Details: [`AGENTS.md`](./AGENTS.md), Stand: [`HANDOFF.md`](./HANDOFF.md).
+P0-1–5 erledigt (Persistenz, Originalpixel, Messungs-Drag via `measure()`, Delete nicht in Inputs). `svelte-check` in `useKonva.ts` ist grün. Nächstes Produkt-Thema: Edge Detection. Details: [`AGENTS.md`](./AGENTS.md), Stand: [`HANDOFF.md`](./HANDOFF.md).
 
 ## Docs
 

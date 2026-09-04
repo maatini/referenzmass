@@ -23,22 +23,22 @@ The first run will download the Playwright browsers (Chromium).
 
 - Main screen loads (title, reference length input, unit selector, canvas)
 - Drawing a reference line with the mouse
-- Calibration feedback appears (scale, "Clear line" button)
+- Calibration feedback appears (scale, "Linie löschen" button)
 - Changing reference length / unit updates the result
 - Switching to measurement mode
-- Drawing measurements and seeing the list + "Export CSV" button
+- Drawing measurements and seeing the list + "CSV exportieren" button
 - All persistence toolbar buttons are present
 
 ## Adding new tests
 
 - Use `data-testid="konva-container"` for the drawing surface.
 - Use `data-testid="persistence-tools"` for the bottom button bar.
-- Prefer semantic selectors (`getByRole('button', { name: /Load Image/ })`) when possible.
+- Prefer semantic selectors (`getByRole('button', { name: /Bild laden/ })`) when possible.
 - Drawing interactions are done via `page.mouse` or `locator.click({ position })`.
 
 ## Future work (documented)
 
-- Proper Tauri API mocking layer so "Load Image", Save/Load Project and CSV export can be fully exercised without native dialogs.
+- Proper Tauri API mocking layer so "Bild laden", Save/Projekt laden and CSV export can be fully exercised without native dialogs.
 - Optionally add WebdriverIO desktop E2E for Windows/Linux CI (true binary + webview testing).
 
 ## Relation to unit tests

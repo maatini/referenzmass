@@ -61,6 +61,23 @@ export function recalculateMeasurement(
 }
 
 /**
+ * Moves one measurement endpoint and recomputes length via `measure()`.
+ * Plane calibrations use homography — never `dist * scale`.
+ */
+export function moveMeasurementAnchor(
+  measurement: Measurement,
+  calibration: Calibration,
+  anchor: 'start' | 'end',
+  position: Point
+): Measurement {
+  const next =
+    anchor === 'start'
+      ? { ...measurement, start: position }
+      : { ...measurement, end: position };
+  return recalculateMeasurement(next, calibration);
+}
+
+/**
  * Recalculates all measurements when the active calibration changes.
  * Returns a new array (immutable update friendly for Svelte $state).
  */

@@ -49,17 +49,17 @@ test.describe('ReferenzMaß – 3D Plane Calibration and Measurements', () => {
     await clickCanvas(canvas, page, 100, 200);
 
     // Jetzt sollte es kalibriert sein!
-    await expect(page.getByText('✓ Reference plane calibrated')).toBeVisible();
-    await expect(page.getByText('Mode: 3D Plane (Homography)')).toBeVisible();
+    await expect(page.getByText('✓ Referenzfläche kalibriert')).toBeVisible();
+    await expect(page.getByText('Modus: 3D-Ebene (Homographie)')).toBeVisible();
 
     // 4. Referenz-Breite und -Höhe festlegen
     await page.locator('#ref-width').fill('10');
     await page.locator('#ref-height').fill('10');
 
     // 5. In den Messmodus wechseln
-    const addBtn = page.getByRole('button', { name: /Add Measurement Line/ });
+    const addBtn = page.getByRole('button', { name: /Messung hinzufügen/ });
     await addBtn.click();
-    await expect(page.getByRole('button', { name: /Finish adding measurements/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Messungen abschließen/ })).toBeVisible();
     await page.waitForTimeout(200);
 
     // 6. Eine Messlinie innerhalb des kalibrierten Quadrats zeichnen (z. B. von x=100, y=150 bis x=200, y=150)
